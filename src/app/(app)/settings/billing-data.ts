@@ -12,6 +12,7 @@ import {
   type BillingPeriodSnapshot,
   type CustomerSmsUsageDto,
 } from "@/lib/billing";
+import { isConfiguredExistingNumberOwner } from "@/lib/numbers/configured-existing-number.server";
 import { createClient } from "@/lib/supabase/server";
 
 type BillingUsageSummary = {
@@ -245,6 +246,23 @@ function subscriptionView(
       status: "ended",
     };
   }
+  if (status === "setup_required" && paymentMethod.status === "saved") {
+    return hasReadyNumber
+      ? {
+          ...capabilities,
+          canCancel: false,
+          description: "Your phone number is ready. Start your Riink monthly plan when you are ready.",
+          label: "Ready to start",
+          status: "setup_required",
+        }
+      : {
+          ...capabilities,
+          canCancel: false,
+          description: "Billing starts when your phone number is ready.",
+          label: "Not started",
+          status: "awaiting_number",
+        };
+  }
   if (
     status === "setup_required" ||
     status === "incomplete" ||
@@ -284,6 +302,8 @@ export async function loadBillingSettingsData(): Promise<BillingSettingsData> {
   if (!user) {
     const paymentMethod = paymentMethodView(null);
     return {
+      canActivateSubscriptionDirectly: false,
+      directActivationAccount: false,
       paymentMethod,
       plan: null,
       subscription: subscriptionView(null, false, paymentMethod, {
@@ -303,6 +323,8 @@ export async function loadBillingSettingsData(): Promise<BillingSettingsData> {
   if (!workspace) {
     const paymentMethod = paymentMethodView(null);
     return {
+      canActivateSubscriptionDirectly: false,
+      directActivationAccount: false,
       paymentMethod,
       plan: null,
       subscription: subscriptionView(null, false, paymentMethod, {
@@ -328,6 +350,17 @@ export async function loadBillingSettingsData(): Promise<BillingSettingsData> {
   const summary = summaryError ? null : firstSummary(summaryData);
   const plan = currentPlan(summary);
   const paymentMethod = paymentMethodView(summary?.payment_method_status);
+  const directActivationAccount = isConfiguredExistingNumberOwner({
+    email: user.email ?? null,
+    userId: user.id,
+  });
+  const canActivateSubscriptionDirectly =
+    directActivationAccount &&
+    (readyCount ?? 0) > 0 &&
+    paymentMethod.status === "saved" &&
+    (summary?.subscription_status === "not_started" ||
+      summary?.subscription_status === "setup_required" ||
+      summary?.subscription_status === "awaiting_number");
   const capabilities = {
     canCancel: explicitTrue(
       summary?.can_cancel_subscription ?? summary?.canCancelSubscription,
@@ -339,6 +372,8 @@ export async function loadBillingSettingsData(): Promise<BillingSettingsData> {
   };
 
   return {
+    canActivateSubscriptionDirectly,
+    directActivationAccount,
     paymentMethod,
     plan,
     subscription: subscriptionView(

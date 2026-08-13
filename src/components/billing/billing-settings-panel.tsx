@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import {
+  activateConfiguredAccountSubscription,
   createBillingPortalSession,
   createBillingSetupSession,
   requestBillingCancellation,
@@ -48,6 +49,7 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
   const [notice, setNotice] = useState<{ message: string; tone: "error" | "success" } | null>(null);
   const [setupSession, setSetupSession] = useState<BillingSetupActionSuccess | null>(null);
   const [showCancellationConfirmation, setShowCancellationConfirmation] = useState(false);
+  const [showActivationConfirmation, setShowActivationConfirmation] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [limitInput, setLimitInput] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -98,6 +100,20 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
     startTransition(async () => {
       const result = await requestBillingCancellation();
       setShowCancellationConfirmation(false);
+      if (!result.ok) {
+        setNotice({ message: result.message, tone: "error" });
+        return;
+      }
+      setNotice({ message: result.message, tone: "success" });
+      router.refresh();
+    });
+  }
+
+  function activateSubscription() {
+    setNotice(null);
+    startTransition(async () => {
+      const result = await activateConfiguredAccountSubscription();
+      setShowActivationConfirmation(false);
       if (!result.ok) {
         setNotice({ message: result.message, tone: "error" });
         return;
@@ -238,7 +254,9 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
             </div>
           </div>
 
-          {subscription.canSetUpPayment && subscription.status !== "awaiting_number" ? (
+          {subscription.canSetUpPayment &&
+          subscription.status !== "awaiting_number" &&
+          paymentMethod.status !== "saved" ? (
             <Button
               className="mt-4 w-full"
               disabled={isPending}
@@ -248,7 +266,20 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
               Add payment method
             </Button>
           ) : null}
-          {subscription.status === "awaiting_number" ? (
+          {data.canActivateSubscriptionDirectly ? (
+            <Button
+              className="mt-4 w-full"
+              disabled={isPending}
+              onClick={() => {
+                setNotice(null);
+                setShowActivationConfirmation(true);
+              }}
+              size="sm"
+            >
+              Start subscription
+            </Button>
+          ) : null}
+          {subscription.status === "awaiting_number" && !data.directActivationAccount ? (
             <div className="mt-4 flex items-center justify-between rounded-lg border border-[#e1e5e3] bg-[#f9faf9] p-3 sm:px-4">
               <div>
                 <p className="text-sm font-medium text-[#26342b]">Phone number required</p>
@@ -306,6 +337,34 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
           session={setupSession}
         />
       ) : null}
+      <Modal
+        description="Your saved payment method will be charged today. Your monthly billing period starts immediately."
+        onClose={() => {
+          if (!isPending) setShowActivationConfirmation(false);
+        }}
+        open={showActivationConfirmation}
+        title="Start Riink subscription?"
+      >
+        <div className="p-5 sm:p-6">
+          <p className="text-sm text-[#536159]">
+            The charge today is {plan ? formatMonthlyPrice(plan.monthlyPriceCents) : "the plan price"}.
+            Your existing French number will remain connected to this workspace.
+          </p>
+        </div>
+        <div className="flex justify-end gap-3 px-5 py-4 sm:px-6">
+          <Button
+            disabled={isPending}
+            onClick={() => setShowActivationConfirmation(false)}
+            type="button"
+            variant="secondary"
+          >
+            Cancel
+          </Button>
+          <Button disabled={isPending} onClick={activateSubscription} type="button">
+            {isPending ? "Activating" : "Pay and start subscription"}
+          </Button>
+        </div>
+      </Modal>
       <Modal
         description="Your plan will remain available through the end of the current billing period. A seven-day grace period follows."
         onClose={() => {

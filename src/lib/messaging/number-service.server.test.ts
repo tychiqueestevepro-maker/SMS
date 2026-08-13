@@ -262,6 +262,37 @@ describe("NumberProvisioningService", () => {
     });
   });
 
+  it("searches and signs Canadian SMS numbers with an area code", async () => {
+    const provider = smsProviderMock();
+    vi.mocked(provider.searchNumbers).mockResolvedValue([
+      {
+        providerNumberId: "+13435550104",
+        phoneNumber: "+13435550104",
+        locality: "Ottawa",
+        region: "ON",
+        supportsSms: true,
+      },
+    ]);
+    const harness = createHarness({ provider });
+
+    const candidates = await harness.service.searchNumbers({
+      areaCode: "343",
+      countryCode: "CA",
+      requestId: "55555555-5555-4555-8555-555555555555",
+      workspaceId: "workspace-1",
+    });
+
+    expect(candidates[0]).toMatchObject({
+      areaCode: "343",
+      countryCode: "CA",
+      phoneNumber: "+13435550104",
+    });
+    expect(harness.signer.verify(candidates[0]!.selectionId, "workspace-1", NOW)).toMatchObject({
+      countryCode: "CA",
+      phoneNumber: "+13435550104",
+    });
+  });
+
   it("does not initialize a workspace or search when the request is throttled", async () => {
     const repository = repositoryMock();
     vi.mocked(repository.claimNumberSearchAttempt).mockResolvedValue({

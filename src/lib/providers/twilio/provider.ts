@@ -181,7 +181,8 @@ export class TwilioSmsProvider implements SmsProvider {
         phoneNumber: number.phoneNumber,
         locality: number.locality,
         region: number.region,
-        supportsSms: number.capabilities.sms,
+        supportsSms:
+          number.capabilities.sms === true || number.capabilities.SMS === true,
       }));
     });
   }

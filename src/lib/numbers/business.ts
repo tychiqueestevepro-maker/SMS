@@ -13,7 +13,7 @@ export interface BusinessAddressInput {
 }
 
 export interface BusinessVerificationInput {
-  countryCode: "US" | "FR";
+  countryCode: "US" | "CA" | "FR";
   legalBusinessName: string;
   ein: string;
   businessAddress: BusinessAddressInput;
@@ -37,7 +37,7 @@ export interface NormalizedBusinessVerification {
     city: string;
     state: string;
     postalCode: string;
-    country: "US" | "FR";
+    country: "US" | "CA" | "FR";
   };
   website: string;
   contactName: string;
@@ -139,6 +139,22 @@ const US_STATE_CODES = new Set([
   "DC",
 ]);
 
+const CANADIAN_PROVINCE_CODES = new Set([
+  "AB",
+  "BC",
+  "MB",
+  "NB",
+  "NL",
+  "NS",
+  "NT",
+  "NU",
+  "ON",
+  "PE",
+  "QC",
+  "SK",
+  "YT",
+]);
+
 const MAX_LENGTHS: Readonly<Record<BusinessVerificationField, number>> = {
   legalBusinessName: 200,
   ein: 20,
@@ -183,8 +199,9 @@ export function validateBusinessVerification(
   const issues: BusinessVerificationIssue[] = [];
   const countryCode = input.countryCode;
   const state = input.businessAddress.state.trim();
-  const normalizedState = countryCode === "US" ? state.toUpperCase() : state;
+  const normalizedState = countryCode === "FR" ? state : state.toUpperCase();
   const einDigits = input.ein.replace(/\D/g, "");
+  const taxIdentifier = input.ein.replace(/[\s-]/g, "").toUpperCase();
   const phoneE164 = normalizePhoneNumber(input.phone);
   const sampleMessages = input.sampleMessages.map((message) => message.trim()).filter(Boolean);
 
@@ -241,7 +258,9 @@ export function validateBusinessVerification(
     input.ein.trim() &&
     (countryCode === "US"
       ? !/^\d{2}-?\d{7}$/.test(input.ein.trim())
-      : !/^(?:\d{9}|\d{14})$/.test(einDigits))
+      : countryCode === "CA"
+        ? !/^\d{9}(?:[A-Z]{2}\d{4})?$/.test(taxIdentifier)
+        : !/^(?:\d{9}|\d{14})$/.test(einDigits))
   ) {
     issues.push({ field: "ein", code: "invalid" });
   }
@@ -249,7 +268,9 @@ export function validateBusinessVerification(
     state &&
     (countryCode === "US"
       ? !US_STATE_CODES.has(normalizedState)
-      : state.length < 2)
+      : countryCode === "CA"
+        ? !CANADIAN_PROVINCE_CODES.has(normalizedState)
+        : state.length < 2)
   ) {
     issues.push({ field: "businessAddress.state", code: "invalid" });
   }
@@ -257,7 +278,9 @@ export function validateBusinessVerification(
     input.businessAddress.postalCode.trim() &&
     !(countryCode === "US"
       ? /^\d{5}(?:-\d{4})?$/.test(input.businessAddress.postalCode.trim())
-      : /^\d{5}$/.test(input.businessAddress.postalCode.trim()))
+      : countryCode === "CA"
+        ? /^[A-Z]\d[A-Z][ -]?\d[A-Z]\d$/i.test(input.businessAddress.postalCode.trim())
+        : /^\d{5}$/.test(input.businessAddress.postalCode.trim()))
   ) {
     issues.push({ field: "businessAddress.postalCode", code: "invalid" });
   }
@@ -304,13 +327,22 @@ export function validateBusinessVerification(
       ein:
         countryCode === "US"
           ? `${einDigits.slice(0, 2)}-${einDigits.slice(2)}`
-          : einDigits,
+          : countryCode === "CA"
+            ? taxIdentifier
+            : einDigits,
       businessAddress: {
         line1: input.businessAddress.line1.trim(),
         line2: input.businessAddress.line2?.trim() ?? "",
         city: input.businessAddress.city.trim(),
         state: normalizedState,
-        postalCode: input.businessAddress.postalCode.trim(),
+        postalCode:
+          countryCode === "CA"
+            ? input.businessAddress.postalCode
+                .trim()
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, "")
+                .replace(/^(.{3})(.{3})$/, "$1 $2")
+            : input.businessAddress.postalCode.trim(),
         country: countryCode,
       },
       website: input.website.trim(),

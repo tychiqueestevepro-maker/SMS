@@ -9,7 +9,7 @@ export const CONFIGURED_EXISTING_NUMBER = Object.freeze({
   providerNumberId: "PNe5c6311d0e30ca70e0c49e923757e8e9",
 });
 
-export function canConnectConfiguredExistingNumber(input: {
+export function isConfiguredExistingNumberOwner(input: {
   email: string | null;
   userId: string;
 }): boolean {
@@ -18,3 +18,5 @@ export function canConnectConfiguredExistingNumber(input: {
     input.email?.trim().toLowerCase() === CONFIGURED_EXISTING_NUMBER.ownerEmail
   );
 }
+
+export const canConnectConfiguredExistingNumber = isConfiguredExistingNumberOwner;

@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 import {
   canConnectConfiguredExistingNumber,
   CONFIGURED_EXISTING_NUMBER,
+  isConfiguredExistingNumberOwner,
 } from "./configured-existing-number.server";
 
 describe("configured existing number access", () => {
@@ -27,5 +28,11 @@ describe("configured existing number access", () => {
         userId: CONFIGURED_EXISTING_NUMBER.ownerUserId,
       }),
     ).toBe(false);
+    expect(
+      isConfiguredExistingNumberOwner({
+        email: CONFIGURED_EXISTING_NUMBER.ownerEmail,
+        userId: CONFIGURED_EXISTING_NUMBER.ownerUserId,
+      }),
+    ).toBe(true);
   });
 });

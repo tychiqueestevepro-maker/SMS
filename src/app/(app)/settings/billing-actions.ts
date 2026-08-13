@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import type {
+  BillingActivationActionResult,
   BillingActionFailure,
   BillingCancellationActionResult,
   BillingPortalActionResult,
@@ -10,12 +11,17 @@ import type {
 } from "@/components/billing/types";
 import { getApplicationOrigin } from "@/lib/application-url";
 import { ProductBillingError } from "@/lib/billing/gateway";
+import {
+  CONFIGURED_EXISTING_NUMBER,
+  isConfiguredExistingNumberOwner,
+} from "@/lib/numbers/configured-existing-number.server";
 import { SupabaseBillingRuntimeRepository } from "@/lib/billing/supabase-runtime-repository.server";
 import { logServerEvent } from "@/lib/observability/logger";
 import {
   billingPublishableKeyFromEnvironment,
   billingServiceFromEnvironment,
   billingSubscriptionServiceFromEnvironment,
+  ensureWorkspaceSubscriptionActive,
 } from "@/lib/runtime/billing.server";
 import { stripeBillingGatewayFromEnvironment } from "@/lib/providers/stripe/server";
 import { createClient } from "@/lib/supabase/server";
@@ -25,6 +31,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 type BillingActionContext = {
   ownerEmail: string;
   ownerName: string | null;
+  ownerUserId: string;
   workspaceId: string;
 };
 
@@ -60,8 +67,65 @@ async function authenticatedBillingContext(): Promise<BillingActionContext | Bil
   return {
     ownerEmail: email,
     ownerName: typeof profile?.display_name === "string" ? profile.display_name : null,
+    ownerUserId: user.id,
     workspaceId: workspace.id as string,
   };
+}
+
+export async function activateConfiguredAccountSubscription(): Promise<BillingActivationActionResult> {
+  const context = await authenticatedBillingContext();
+  if ("ok" in context) return context;
+  if (
+    !isConfiguredExistingNumberOwner({
+      email: context.ownerEmail,
+      userId: context.ownerUserId,
+    })
+  ) {
+    return {
+      code: "BILLING_ACTIVATION_FAILED",
+      message: "This subscription cannot be activated directly.",
+      ok: false,
+    };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { count, error } = await supabase
+      .from("phone_numbers")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", context.workspaceId)
+      .eq("phone_e164", CONFIGURED_EXISTING_NUMBER.phoneNumber)
+      .eq("status", "ready")
+      .is("deleted_at", null);
+    if (error || count !== 1) {
+      throw new ProductBillingError("BILLING_ACTIVATION_FAILED");
+    }
+
+    await ensureWorkspaceSubscriptionActive(context.workspaceId);
+    logServerEvent(
+      "info",
+      {
+        event: "configured_account_subscription_activated",
+        workspace_id: context.workspaceId,
+      },
+    );
+    revalidatePath("/settings");
+    return {
+      kind: "activation",
+      message: "Your Riink subscription is active.",
+      ok: true,
+    };
+  } catch (error) {
+    const productError =
+      error instanceof ProductBillingError
+        ? error
+        : new ProductBillingError("BILLING_ACTIVATION_FAILED");
+    return {
+      code: "BILLING_ACTIVATION_FAILED",
+      message: productError.message,
+      ok: false,
+    };
+  }
 }
 
 export async function createBillingSetupSession(): Promise<BillingSetupActionResult> {

@@ -2,6 +2,8 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { parseAndNormalizePhoneNumber } from "@/lib/contacts/phone";
+
 import {
   getProviderFailureDetails,
   ProductMessagingError,
@@ -111,9 +113,8 @@ function safePhoneNumber(
   value: string,
   countryCode: PurchasableNumberCountryCode,
 ): boolean {
-  return countryCode === "US"
-    ? /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(value)
-    : /^\+33[1-79]\d{8}$/.test(value);
+  const normalized = parseAndNormalizePhoneNumber(value);
+  return normalized?.phoneE164 === value && normalized.countryCode === countryCode;
 }
 
 /**

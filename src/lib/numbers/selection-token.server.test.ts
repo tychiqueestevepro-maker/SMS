@@ -57,6 +57,26 @@ describe("NumberSelectionTokenSigner", () => {
     });
   });
 
+  it("issues selections for Canadian SMS numbers with a NANP area code", () => {
+    const signer = new NumberSelectionTokenSigner(randomBytes(32).toString("base64"));
+    const token = signer.issue(
+      {
+        areaCode: "343",
+        countryCode: "CA",
+        phoneNumber: "+13435550104",
+        providerNumberId: "+13435550104",
+        workspaceId: "workspace-1",
+      },
+      { now: NOW },
+    );
+
+    expect(signer.verify(token, "workspace-1", NOW)).toMatchObject({
+      areaCode: "343",
+      countryCode: "CA",
+      phoneNumber: "+13435550104",
+    });
+  });
+
   it("rejects expiry, tampering, and cross-workspace replay", () => {
     const signer = new NumberSelectionTokenSigner(randomBytes(32).toString("base64"));
     const token = signer.issue(

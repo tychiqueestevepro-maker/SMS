@@ -14,6 +14,7 @@ import {
 import { Modal } from "@/components/contacts/modal";
 import type { NumberActionResult } from "@/components/numbers/types";
 import { Button } from "@/components/ui/button";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Elements, PaymentElement, loadStripe, useElements, useStripe } from "@/lib/providers/stripe/browser";
 import {
   BUSINESS_VERIFICATION_DESCRIPTION,
@@ -35,6 +36,12 @@ type NumberOnboardingDialogProps = {
 
 const baseInputClass =
   "h-10 w-full rounded-lg border bg-white px-3 text-sm text-[#26342b] shadow-sm placeholder:text-[#9aa39d] focus:outline-none focus:ring-3";
+
+const NUMBER_COUNTRIES = [
+  { code: "US", dialCode: "+1", name: "United States" },
+  { code: "CA", dialCode: "+1", name: "Canada" },
+  { code: "FR", dialCode: "+33", name: "France" },
+] as const;
 
 function formatPhone(phone: string) {
   const match = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(phone);
@@ -134,7 +141,7 @@ export function NumberOnboardingDialog({
   // Steps: 1=area code, 2=pick number, 3=business, 4=card details (conditional)
   const totalSteps = needsBillingSetup ? 4 : 3;
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [countryCode, setCountryCode] = useState<"US" | "FR">("US");
+  const [countryCode, setCountryCode] = useState<"US" | "CA" | "FR">("US");
   const [areaCode, setAreaCode] = useState("");
   const [candidates, setCandidates] = useState<NumberSearchCandidateDto[]>([]);
   const [selected, setSelected] = useState<NumberSearchCandidateDto | null>(null);
@@ -335,21 +342,34 @@ export function NumberOnboardingDialog({
               </span>
               <h3 className="mt-5 text-lg font-semibold text-[#26342b]">Choose a country</h3>
               <p className="mt-2 text-sm leading-6 text-[#68736c]">
-                Search for an SMS number in the United States or France.
+                Search available SMS numbers in the United States, Canada or France.
               </p>
-              <label className="mx-auto mt-6 block max-w-xs text-left">
-                <span className="mb-1.5 block text-sm font-medium text-[#344139]">Country</span>
-                <select
-                  className={`${baseInputClass} border-[#dbe2dd] focus:border-[#2e7d57] focus:ring-[#d8ebe0]`}
-                  name="countryCode"
-                  onChange={(event) => setCountryCode(event.target.value as "US" | "FR")}
-                  value={countryCode}
-                >
-                  <option value="US">United States (+1)</option>
-                  <option value="FR">France (+33)</option>
-                </select>
-              </label>
-              {countryCode === "US" ? (
+              <fieldset className="mx-auto mt-6 max-w-md">
+                <legend className="sr-only">Country</legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {NUMBER_COUNTRIES.map((country) => {
+                    const selectedCountry = countryCode === country.code;
+                    return (
+                      <button
+                        aria-pressed={selectedCountry}
+                        className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold outline-none transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] focus-visible:ring-3 focus-visible:ring-[#b9d8c5] active:scale-[0.98] ${
+                          selectedCountry
+                            ? "border-[#80aa91] bg-[#f1f8f3] text-[#246b4a]"
+                            : "border-[#dbe2dd] bg-white text-[#536159] hover:border-[#b8c9bd]"
+                        }`}
+                        key={country.code}
+                        onClick={() => setCountryCode(country.code)}
+                        type="button"
+                      >
+                        <CountryFlag className="h-4 w-6" countryCode={country.code} />
+                        <span>{country.name}</span>
+                        <span className="text-xs font-normal text-[#7a857e]">{country.dialCode}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              {countryCode !== "FR" ? (
               <div className="relative mx-auto mt-6 max-w-xs">
                 <Search
                   aria-hidden="true"
@@ -364,7 +384,7 @@ export function NumberOnboardingDialog({
                   maxLength={3}
                   name="areaCode"
                   pattern="[2-9][0-9]{2}"
-                  placeholder="512"
+                  placeholder={countryCode === "CA" ? "343" : "786"}
                   required
                 />
               </div>
@@ -431,7 +451,11 @@ export function NumberOnboardingDialog({
                     </span>
                     <span className="mt-1 block text-xs text-[#738078]">
                       {[candidate.locality, candidate.region].filter(Boolean).join(", ") ||
-                        (candidate.countryCode === "FR" ? "France" : "United States")}
+                        (candidate.countryCode === "FR"
+                          ? "France"
+                          : candidate.countryCode === "CA"
+                            ? "Canada"
+                            : "United States")}
                     </span>
                   </span>
                   <span
@@ -451,7 +475,9 @@ export function NumberOnboardingDialog({
                 <div className="rounded-xl border border-dashed border-[#d8dfda] px-5 py-12 text-center text-sm text-[#68736c]">
                   {countryCode === "FR"
                     ? "No French SMS numbers are currently available."
-                    : "No phone numbers were found. Try another area code."}
+                    : countryCode === "CA"
+                      ? "No Canadian SMS numbers were found. Try another area code."
+                      : "No phone numbers were found. Try another area code."}
                 </div>
               ) : null}
             </div>
@@ -495,14 +521,26 @@ export function NumberOnboardingDialog({
                 <input className={inputClass("legalBusinessName")} name="legalBusinessName" required />
               </Field>
               <Field
-                label={countryCode === "FR" ? "SIREN or SIRET" : "EIN"}
+                label={
+                  countryCode === "FR"
+                    ? "SIREN or SIRET"
+                    : countryCode === "CA"
+                      ? "Business number"
+                      : "EIN"
+                }
                 error={fieldErrors.has("ein")}
               >
                 <input
                   className={inputClass("ein")}
-                  inputMode="numeric"
+                  inputMode={countryCode === "CA" ? "text" : "numeric"}
                   name="ein"
-                  placeholder={countryCode === "FR" ? "12345678900012" : "12-3456789"}
+                  placeholder={
+                    countryCode === "FR"
+                      ? "12345678900012"
+                      : countryCode === "CA"
+                        ? "123456789 RC 0001"
+                        : "12-3456789"
+                  }
                   required
                 />
               </Field>
@@ -530,7 +568,13 @@ export function NumberOnboardingDialog({
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field
-                  label={countryCode === "FR" ? "Region" : "State"}
+                  label={
+                    countryCode === "FR"
+                      ? "Region"
+                      : countryCode === "CA"
+                        ? "Province"
+                        : "State"
+                  }
                   error={fieldErrors.has("businessAddress.state")}
                 >
                   <input
@@ -538,18 +582,22 @@ export function NumberOnboardingDialog({
                     className={inputClass("businessAddress.state")}
                     maxLength={countryCode === "FR" ? 100 : 2}
                     name="state"
-                    placeholder={countryCode === "FR" ? "Ile de France" : "TX"}
+                    placeholder={
+                      countryCode === "FR" ? "Ile de France" : countryCode === "CA" ? "ON" : "TX"
+                    }
                     required
                   />
                 </Field>
                 <Field
-                  label={countryCode === "FR" ? "Postal code" : "ZIP code"}
+                  label={countryCode === "US" ? "ZIP code" : "Postal code"}
                   error={fieldErrors.has("businessAddress.postalCode")}
                 >
                   <input
                     className={inputClass("businessAddress.postalCode")}
                     name="postalCode"
-                    placeholder={countryCode === "FR" ? "75001" : "78701"}
+                    placeholder={
+                      countryCode === "FR" ? "75001" : countryCode === "CA" ? "K1A 0B1" : "78701"
+                    }
                     required
                   />
                 </Field>
@@ -573,7 +621,13 @@ export function NumberOnboardingDialog({
                 <input
                   className={inputClass("phone")}
                   name="phone"
-                  placeholder={countryCode === "FR" ? "06 12 34 56 78" : "(512) 555-0192"}
+                  placeholder={
+                    countryCode === "FR"
+                      ? "06 12 34 56 78"
+                      : countryCode === "CA"
+                        ? "(343) 555-0104"
+                        : "(512) 555-0192"
+                  }
                   required
                   type="tel"
                 />

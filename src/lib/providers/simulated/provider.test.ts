@@ -48,4 +48,25 @@ describe("SimulatedMessagingProvider", () => {
       provider.verifyWebhook({ ...baseInput, signature: "invalid" }),
     ).resolves.toEqual({ valid: false });
   });
+
+  it("keeps Canadian inventory separate from United States inventory", async () => {
+    const provider = new SimulatedMessagingProvider();
+
+    await expect(
+      provider.searchNumbers({
+        areaCode: "343",
+        countryCode: "CA",
+        workspaceId: "workspace-1",
+      }),
+    ).resolves.toMatchObject([
+      { phoneNumber: "+13435550104", region: "ON", supportsSms: true },
+    ]);
+    await expect(
+      provider.searchNumbers({
+        areaCode: "343",
+        countryCode: "US",
+        workspaceId: "workspace-1",
+      }),
+    ).resolves.toEqual([]);
+  });
 });

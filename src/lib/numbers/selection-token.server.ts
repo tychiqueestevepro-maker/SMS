@@ -2,15 +2,18 @@ import "server-only";
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
+import { parseAndNormalizePhoneNumber } from "@/lib/contacts/phone";
+
 const TOKEN_VERSION = 1;
 const DEFAULT_TTL_SECONDS = 5 * 60;
 const TOKEN_PREFIX = "v1";
 const TOKEN_ALGORITHM = "aes-256-gcm";
 const TOKEN_AAD = Buffer.from("riink:number-selection:v1", "utf8");
+type SelectionCountryCode = "US" | "CA" | "FR";
 
 type SelectionPayload = {
   areaCode: string | null;
-  countryCode: "US" | "FR";
+  countryCode: SelectionCountryCode;
   expiresAt: number;
   nonce: string;
   phoneNumber: string;
@@ -24,10 +27,13 @@ export type VerifiedNumberSelection = Pick<
   "areaCode" | "countryCode" | "nonce" | "phoneNumber" | "providerNumberId" | "workspaceId"
 >;
 
-function validPhoneNumber(phoneNumber: string, countryCode: "US" | "FR"): boolean {
-  return countryCode === "US"
-    ? /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(phoneNumber)
-    : /^\+33[1-79]\d{8}$/.test(phoneNumber);
+function validPhoneNumber(phoneNumber: string, countryCode: SelectionCountryCode): boolean {
+  const normalized = parseAndNormalizePhoneNumber(phoneNumber);
+  return normalized?.phoneE164 === phoneNumber && normalized.countryCode === countryCode;
+}
+
+function validAreaCode(countryCode: SelectionCountryCode, areaCode: string | null): boolean {
+  return countryCode === "FR" ? areaCode === null : /^\d{3}$/.test(areaCode ?? "");
 }
 
 function signingKey(base64Key: string): Buffer {
@@ -57,7 +63,7 @@ export class NumberSelectionTokenSigner {
   issue(
     selection: {
       areaCode: string | null;
-      countryCode: "US" | "FR";
+      countryCode: SelectionCountryCode;
       phoneNumber: string;
       providerNumberId: string;
       workspaceId: string;
@@ -69,9 +75,7 @@ export class NumberSelectionTokenSigner {
       throw new Error("Number selection TTL is invalid.");
     }
     if (
-      (selection.countryCode === "US"
-        ? !/^\d{3}$/.test(selection.areaCode ?? "")
-        : selection.countryCode !== "FR" || selection.areaCode !== null) ||
+      !validAreaCode(selection.countryCode, selection.areaCode) ||
       !validPhoneNumber(selection.phoneNumber, selection.countryCode) ||
       !selection.providerNumberId.trim() ||
       selection.providerNumberId.length > 255 ||
@@ -143,13 +147,14 @@ export class NumberSelectionTokenSigner {
         typeof payload.providerNumberId !== "string" ||
         !payload.providerNumberId.trim() ||
         payload.providerNumberId.length > 255 ||
-        (payload.countryCode === "US"
-          ? !/^\d{3}$/.test(payload.areaCode ?? "")
-          : payload.countryCode !== "FR" || payload.areaCode !== null) ||
+        (payload.countryCode !== "US" &&
+          payload.countryCode !== "CA" &&
+          payload.countryCode !== "FR") ||
+        !validAreaCode(payload.countryCode, payload.areaCode ?? null) ||
         typeof payload.phoneNumber !== "string" ||
         !validPhoneNumber(
           payload.phoneNumber,
-          payload.countryCode as "US" | "FR",
+          payload.countryCode,
         )
       ) {
         invalidSelection();

@@ -51,7 +51,7 @@ function mockClient() {
       phoneNumber: "+12025550101",
       locality: "Washington",
       region: "DC",
-      capabilities: { sms: true },
+      capabilities: { SMS: true },
     },
   ]);
   const availablePhoneNumbers = vi.fn(() => ({
@@ -200,6 +200,34 @@ describe("TwilioSmsProvider", () => {
     ).resolves.toMatchObject([{ phoneNumber: "+33939031234", supportsSms: true }]);
     expect(mocks.availablePhoneNumbers).toHaveBeenCalledWith("FR");
     expect(mocks.availableList).toHaveBeenCalledWith({
+      smsEnabled: true,
+      limit: 10,
+    });
+  });
+
+  it("searches Canadian SMS numbers using their NANP area code", async () => {
+    mocks.availableList.mockResolvedValueOnce([
+      {
+        phoneNumber: "+13435550104",
+        locality: "Ottawa",
+        region: "ON",
+        capabilities: { SMS: true },
+      },
+    ]);
+
+    await expect(
+      provider.searchNumbers({
+        workspaceId: "workspace-1",
+        countryCode: "CA",
+        areaCode: "343",
+        limit: 10,
+      }),
+    ).resolves.toMatchObject([
+      { phoneNumber: "+13435550104", supportsSms: true },
+    ]);
+    expect(mocks.availablePhoneNumbers).toHaveBeenCalledWith("CA");
+    expect(mocks.availableList).toHaveBeenCalledWith({
+      areaCode: 343,
       smsEnabled: true,
       limit: 10,
     });

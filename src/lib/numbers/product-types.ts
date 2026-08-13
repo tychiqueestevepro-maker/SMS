@@ -45,7 +45,7 @@ export interface NumberSearchCandidateDto {
   selectionId: string;
   phoneNumber: string;
   areaCode: string | null;
-  countryCode: "US" | "FR";
+  countryCode: "US" | "CA" | "FR";
   locality: string | null;
   region: string | null;
 }

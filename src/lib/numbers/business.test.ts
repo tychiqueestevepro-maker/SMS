@@ -96,6 +96,34 @@ describe("business verification", () => {
     });
   });
 
+  it("validates a Canadian business number, province and postal code", () => {
+    const validation = validateBusinessVerification({
+      ...VALID_INPUT,
+      countryCode: "CA",
+      ein: "123456789 RC 0001",
+      businessAddress: {
+        ...VALID_INPUT.businessAddress,
+        city: "Ottawa",
+        state: "on",
+        postalCode: "K1A0B1",
+      },
+      phone: "+1 343 555 0104",
+    });
+
+    expect(validation).toMatchObject({
+      valid: true,
+      value: {
+        ein: "123456789RC0001",
+        businessAddress: {
+          country: "CA",
+          postalCode: "K1A 0B1",
+          state: "ON",
+        },
+        phoneE164: "+13435550104",
+      },
+    });
+  });
+
   it("reports required and invalid fields without partial normalized output", () => {
     const validation = validateBusinessVerification({
       ...VALID_INPUT,

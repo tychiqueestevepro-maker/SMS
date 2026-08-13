@@ -18,7 +18,7 @@ export type ProductDeliveryStatus =
 export type PhoneNumberStatus = "pending" | "ready";
 
 export type ExistingNumberCountryCode = "US" | "CA";
-export type PurchasableNumberCountryCode = "US" | "FR";
+export type PurchasableNumberCountryCode = "US" | "CA" | "FR";
 
 /**
  * Provider-neutral progress for an existing-number onboarding operation.

@@ -22,7 +22,13 @@ function queryWithResult(result: unknown) {
   return query;
 }
 
-function billingClient(summaryOverrides: Record<string, unknown> = {}) {
+function billingClient(
+  summaryOverrides: Record<string, unknown> = {},
+  options: {
+    readyCount?: number;
+    user?: { email: string; id: string };
+  } = {},
+) {
   const workspace = queryWithResult({
     data: { billing_plan_id: "plan-1", id: "workspace-1" },
   });
@@ -35,12 +41,14 @@ function billingClient(summaryOverrides: Record<string, unknown> = {}) {
       safety_cap_segments: 10_000,
     },
   });
-  const numbers = queryWithResult({ count: 0, data: null });
+  const numbers = queryWithResult({ count: options.readyCount ?? 0, data: null });
 
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
-        data: { user: { id: "user-1" } },
+        data: {
+          user: options.user ?? { email: "owner@example.com", id: "user-1" },
+        },
       }),
     },
     from: vi.fn((table: string) => {
@@ -164,5 +172,54 @@ describe("loadBillingSettingsData", () => {
     const data = await loadBillingSettingsData();
 
     expect(data.subscription.status).toBe("active");
+  });
+
+  it("offers direct activation only to the configured owner with a ready number and saved card", async () => {
+    createClient.mockResolvedValue(
+      billingClient(
+        {
+          payment_method_status: "saved",
+          subscription_status: "setup_required",
+        },
+        {
+          readyCount: 1,
+          user: {
+            email: "tychiqueesteve2005@gmail.com",
+            id: "813e98ef-74da-4752-a228-3a018e56d777",
+          },
+        },
+      ),
+    );
+
+    const data = await loadBillingSettingsData();
+
+    expect(data).toMatchObject({
+      canActivateSubscriptionDirectly: true,
+      directActivationAccount: true,
+      subscription: {
+        label: "Ready to start",
+        status: "setup_required",
+      },
+    });
+  });
+
+  it("keeps normal saved cards uncharged while their number is pending", async () => {
+    createClient.mockResolvedValue(
+      billingClient({
+        payment_method_status: "saved",
+        subscription_status: "setup_required",
+      }),
+    );
+
+    const data = await loadBillingSettingsData();
+
+    expect(data).toMatchObject({
+      canActivateSubscriptionDirectly: false,
+      directActivationAccount: false,
+      subscription: {
+        description: "Billing starts when your phone number is ready.",
+        status: "awaiting_number",
+      },
+    });
   });
 });

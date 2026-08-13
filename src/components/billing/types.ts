@@ -30,6 +30,8 @@ export type BillingPaymentMethodClientDto = {
 };
 
 export type BillingSettingsData = {
+  canActivateSubscriptionDirectly: boolean;
+  directActivationAccount: boolean;
   paymentMethod: BillingPaymentMethodClientDto;
   plan: BillingPlanClientDto | null;
   subscription: BillingSubscriptionClientDto;
@@ -41,6 +43,7 @@ export type BillingActionFailure = {
   ok: false;
   code:
     | "BILLING_SESSION_UNAVAILABLE"
+    | "BILLING_ACTIVATION_FAILED"
     | "BILLING_CANCELLATION_FAILED"
     | "AUTH_REQUIRED";
 };
@@ -65,12 +68,22 @@ export type BillingCancellationActionSuccess = {
   ok: true;
 };
 
+export type BillingActivationActionSuccess = {
+  kind: "activation";
+  message: string;
+  ok: true;
+};
+
 export type BillingSetupActionResult = BillingActionFailure | BillingSetupActionSuccess;
 export type BillingPortalActionResult = BillingActionFailure | BillingPortalActionSuccess;
 export type BillingCancellationActionResult =
   | BillingActionFailure
   | BillingCancellationActionSuccess;
+export type BillingActivationActionResult =
+  | BillingActionFailure
+  | BillingActivationActionSuccess;
 export type BillingActionResult =
   | BillingSetupActionResult
   | BillingPortalActionResult
-  | BillingCancellationActionResult;
+  | BillingCancellationActionResult
+  | BillingActivationActionResult;

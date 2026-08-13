@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
+  ensureSubscription: vi.fn(),
   log: vi.fn(),
   requestCancellation: vi.fn(),
   revalidatePath: vi.fn(),
@@ -18,39 +19,57 @@ vi.mock("@/lib/runtime/billing.server", () => ({
   billingSubscriptionServiceFromEnvironment: () => ({
     requestCancellation: mocks.requestCancellation,
   }),
+  ensureWorkspaceSubscriptionActive: mocks.ensureSubscription,
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 
 import { ProductBillingError } from "@/lib/billing/gateway";
 
-import { requestBillingCancellation } from "./billing-actions";
+import {
+  activateConfiguredAccountSubscription,
+  requestBillingCancellation,
+} from "./billing-actions";
 
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
 
-function authenticatedClient() {
+function authenticatedClient(
+  user: { email: string; id: string } = {
+    email: "owner@example.com",
+    id: "11111111-1111-4111-8111-111111111111",
+  },
+) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
         data: {
-          user: {
-            email: "owner@example.com",
-            id: "11111111-1111-4111-8111-111111111111",
-          },
+          user,
         },
       }),
     },
-    from: vi.fn((table: string) => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn().mockResolvedValue({
-            data:
-              table === "workspaces"
-                ? { id: WORKSPACE_ID }
-                : { display_name: "Owner" },
-          }),
+    from: vi.fn((table: string) => {
+      if (table === "phone_numbers") {
+        const query = {
+          eq: vi.fn(),
+          is: vi.fn().mockResolvedValue({ count: 1, error: null }),
+          select: vi.fn(),
+        };
+        query.select.mockReturnValue(query);
+        query.eq.mockReturnValue(query);
+        return query;
+      }
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data:
+                table === "workspaces"
+                  ? { id: WORKSPACE_ID }
+                  : { display_name: "Owner" },
+            }),
+          })),
         })),
-      })),
-    })),
+      };
+    }),
   };
 }
 
@@ -59,6 +78,7 @@ describe("requestBillingCancellation", () => {
     vi.clearAllMocks();
     mocks.createClient.mockResolvedValue(authenticatedClient());
     mocks.requestCancellation.mockResolvedValue({ alreadyScheduled: false });
+    mocks.ensureSubscription.mockResolvedValue({ active: true });
   });
 
   it("derives the workspace from the signed-in user and schedules cancellation", async () => {
@@ -118,5 +138,30 @@ describe("requestBillingCancellation", () => {
       ok: false,
     });
     expect(mocks.requestCancellation).not.toHaveBeenCalled();
+  });
+
+  it("allows only the configured owner to activate billing directly", async () => {
+    mocks.createClient.mockResolvedValue(
+      authenticatedClient({
+        email: "tychiqueesteve2005@gmail.com",
+        id: "813e98ef-74da-4752-a228-3a018e56d777",
+      }),
+    );
+
+    await expect(activateConfiguredAccountSubscription()).resolves.toEqual({
+      kind: "activation",
+      message: "Your Riink subscription is active.",
+      ok: true,
+    });
+    expect(mocks.ensureSubscription).toHaveBeenCalledWith(WORKSPACE_ID);
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
+  });
+
+  it("blocks direct activation for every other account", async () => {
+    await expect(activateConfiguredAccountSubscription()).resolves.toMatchObject({
+      code: "BILLING_ACTIVATION_FAILED",
+      ok: false,
+    });
+    expect(mocks.ensureSubscription).not.toHaveBeenCalled();
   });
 });

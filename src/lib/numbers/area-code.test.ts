@@ -17,7 +17,7 @@ describe("US area-code choice", () => {
 
   it("returns a safe product error and extracts an area code from US E.164", () => {
     expect(() => assertUsAreaCode("12")).toThrow(
-      "Enter a valid three-digit US area code.",
+      "Enter a valid three digit area code.",
     );
     expect(areaCodeFromUsE164("+15125550192")).toBe("512");
     expect(areaCodeFromUsE164("+442071838750")).toBeNull();

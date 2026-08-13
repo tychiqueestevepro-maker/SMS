@@ -9,6 +9,7 @@ import { BillingSettingsPanel } from "./billing-settings-panel";
 import type { BillingSettingsData } from "./types";
 
 const mocks = vi.hoisted(() => ({
+  activateConfiguredAccountSubscription: vi.fn(),
   createBillingPortalSession: vi.fn(),
   createBillingSetupSession: vi.fn(),
   requestBillingCancellation: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/(app)/settings/billing-actions", () => ({
+  activateConfiguredAccountSubscription: mocks.activateConfiguredAccountSubscription,
   createBillingPortalSession: mocks.createBillingPortalSession,
   createBillingSetupSession: mocks.createBillingSetupSession,
   requestBillingCancellation: mocks.requestBillingCancellation,
@@ -63,6 +65,8 @@ const period: BillingPeriodSnapshot = {
 
 function settingsData(usedCredits: number): BillingSettingsData {
   return {
+    canActivateSubscriptionDirectly: false,
+    directActivationAccount: false,
     paymentMethod: { label: "No payment method added", status: "missing" },
     plan: {
       additionalCreditPriceMicroUsd: period.plan.overagePriceMicroUsd,
@@ -185,6 +189,37 @@ describe("BillingSettingsPanel", () => {
     expect(mocks.requestBillingCancellation).toHaveBeenCalledOnce();
     expect(mocks.refresh).toHaveBeenCalledOnce();
     expect(screen.queryByRole("dialog", { name: "Cancel Riink plan?" })).toBeNull();
+  });
+
+  it("charges the configured account only after explicit confirmation", async () => {
+    mocks.activateConfiguredAccountSubscription.mockResolvedValue({
+      kind: "activation",
+      message: "Your Riink subscription is active.",
+      ok: true,
+    });
+    const configured = settingsData(0);
+    configured.canActivateSubscriptionDirectly = true;
+    configured.directActivationAccount = true;
+    configured.paymentMethod = { label: "Payment method saved", status: "saved" };
+    configured.subscription = {
+      canCancel: false,
+      canManageBilling: false,
+      canSetUpPayment: true,
+      description: "Billing starts when your phone number is ready.",
+      label: "Setup needed",
+      status: "setup_required",
+    };
+    render(<BillingSettingsPanel data={configured} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start subscription" }));
+    expect(mocks.activateConfiguredAccountSubscription).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Start Riink subscription?" })).toBeTruthy();
+    expect(screen.getByText(/The charge today is \$89.99/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pay and start subscription" }));
+    expect(await screen.findByText("Your Riink subscription is active.")).toBeTruthy();
+    expect(mocks.activateConfiguredAccountSubscription).toHaveBeenCalledOnce();
+    expect(mocks.refresh).toHaveBeenCalledOnce();
   });
 
   it("does not offer cancellation once cancellation is scheduled", () => {

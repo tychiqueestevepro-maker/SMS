@@ -42,7 +42,7 @@ export interface TwilioAvailableNumberResource {
   phoneNumber: string;
   locality: string | null;
   region: string | null;
-  capabilities: { sms: boolean };
+  capabilities: { SMS?: boolean; sms?: boolean };
 }
 
 export interface TwilioIncomingPhoneNumberResource {

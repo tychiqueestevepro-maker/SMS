@@ -12,7 +12,7 @@ export type NumberProductErrorCode =
   | "CONNECTED_NUMBER_CANNOT_BE_REMOVED";
 
 const NUMBER_PRODUCT_ERRORS: Record<NumberProductErrorCode, string> = {
-  INVALID_AREA_CODE: "Enter a valid three-digit US area code.",
+  INVALID_AREA_CODE: "Enter a valid three digit area code.",
   INVALID_IMPORT_COUNTRY: "Choose a supported country.",
   INVALID_IMPORT_PHONE_NUMBER: "Enter a valid business phone number.",
   PHONE_NUMBER_LIMIT_REACHED:

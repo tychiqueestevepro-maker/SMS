@@ -1,4 +1,5 @@
 import { estimateSmsCredits } from "../../messaging/credits";
+import { parseAndNormalizePhoneNumber } from "../../contacts/phone";
 import {
   ProviderOperationError,
   type ProviderFailureDetails,
@@ -52,6 +53,13 @@ const DEFAULT_NUMBERS: readonly SimulatedNumberInventoryItem[] = [
     phoneNumber: "+12025550101",
     locality: "Washington",
     region: "DC",
+    supportsSms: true,
+  },
+  {
+    providerNumberId: "sim-number-ca-0001",
+    phoneNumber: "+13435550104",
+    locality: "Ottawa",
+    region: "ON",
     supportsSms: true,
   },
   {
@@ -154,9 +162,7 @@ export class SimulatedMessagingProvider implements SmsProvider {
     return this.inventory
       .filter((number) => !purchasedIds.has(number.providerNumberId))
       .filter((number) =>
-        input.countryCode === "FR"
-          ? number.phoneNumber.startsWith("+33")
-          : number.phoneNumber.startsWith("+1"),
+        parseAndNormalizePhoneNumber(number.phoneNumber)?.countryCode === input.countryCode,
       )
       .filter(
         (number) =>

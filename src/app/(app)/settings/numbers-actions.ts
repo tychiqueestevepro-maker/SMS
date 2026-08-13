@@ -32,13 +32,13 @@ function failure(error: unknown): NumberActionResult {
 }
 
 export async function searchAvailableNumbersAction(
-  countryCodeInput: "US" | "FR",
+  countryCodeInput: "US" | "CA" | "FR",
   areaCodeInput: string,
   requestIdInput: string,
 ): Promise<NumberActionResult> {
   try {
-    const countryCode = z.enum(["US", "FR"]).parse(countryCodeInput);
-    const areaCode = countryCode === "US" ? assertUsAreaCode(areaCodeInput) : undefined;
+    const countryCode = z.enum(["US", "CA", "FR"]).parse(countryCodeInput);
+    const areaCode = countryCode !== "FR" ? assertUsAreaCode(areaCodeInput) : undefined;
     const requestId = z.string().uuid().parse(requestIdInput);
     const context = await loadNumberServerContext();
     if (!context) throw new ProductMessagingError("PHONE_NUMBER_OPERATION_FAILED");
@@ -55,6 +55,8 @@ export async function searchAvailableNumbersAction(
         ? "Choose a phone number."
         : countryCode === "FR"
           ? "No French SMS numbers are currently available."
+          : countryCode === "CA"
+            ? "No Canadian SMS numbers were found for this area code."
           : "No phone numbers were found for this area code.",
       ok: true,
     };
