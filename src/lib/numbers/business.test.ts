@@ -1,0 +1,140 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  BUSINESS_VERIFICATION_DESCRIPTION,
+  BUSINESS_VERIFICATION_TITLE,
+  validateBusinessVerification,
+  type BusinessVerificationInput,
+} from "./business";
+
+const VALID_INPUT: BusinessVerificationInput = {
+  legalBusinessName: " Riink, Inc. ",
+  ein: "12-3456789",
+  businessAddress: {
+    line1: "100 Main Street",
+    line2: " Suite 200 ",
+    city: "Austin",
+    state: "tx",
+    postalCode: "78701",
+  },
+  website: "https://riink.example",
+  contactName: "Ada Lovelace",
+  email: "ADA@RIINK.EXAMPLE",
+  phone: "(512) 555-0192",
+  messagingUseCase: "Customer-approved sales follow-up",
+  optInMethod: "Written form consent",
+  privacyPolicy: "https://riink.example/privacy",
+  terms: "https://riink.example/terms",
+  sampleMessages: [" Hi Ada, this is Riink. ", "Following up on your request."],
+};
+
+describe("business verification", () => {
+  it("uses the exact provider-neutral product copy", () => {
+    expect(BUSINESS_VERIFICATION_TITLE).toBe("Business verification");
+    expect(BUSINESS_VERIFICATION_DESCRIPTION).toBe(
+      "We need a few details to activate your number.",
+    );
+  });
+
+  it("validates and normalizes every locked US compliance field", () => {
+    expect(validateBusinessVerification(VALID_INPUT)).toEqual({
+      valid: true,
+      issues: [],
+      value: {
+        legalBusinessName: "Riink, Inc.",
+        ein: "12-3456789",
+        businessAddress: {
+          line1: "100 Main Street",
+          line2: "Suite 200",
+          city: "Austin",
+          state: "TX",
+          postalCode: "78701",
+          country: "US",
+        },
+        website: "https://riink.example",
+        contactName: "Ada Lovelace",
+        email: "ada@riink.example",
+        phoneE164: "+15125550192",
+        messagingUseCase: "Customer-approved sales follow-up",
+        optInMethod: "Written form consent",
+        privacyPolicy: "https://riink.example/privacy",
+        terms: "https://riink.example/terms",
+        sampleMessages: [
+          "Hi Ada, this is Riink.",
+          "Following up on your request.",
+        ],
+      },
+    });
+  });
+
+  it("reports required and invalid fields without partial normalized output", () => {
+    const validation = validateBusinessVerification({
+      ...VALID_INPUT,
+      legalBusinessName: "",
+      ein: "123",
+      businessAddress: {
+        ...VALID_INPUT.businessAddress,
+        state: "ZZ",
+        postalCode: "ABC",
+      },
+      website: "not-a-url",
+      email: "bad-email",
+      phone: "+442071838750",
+      privacyPolicy: "privacy",
+      terms: "terms",
+      sampleMessages: ["   "],
+    });
+
+    expect(validation.valid).toBe(false);
+    expect(validation.value).toBeNull();
+    expect(validation.issues).toEqual(
+      expect.arrayContaining([
+        { field: "legalBusinessName", code: "required" },
+        { field: "ein", code: "invalid" },
+        { field: "businessAddress.state", code: "invalid" },
+        { field: "businessAddress.postalCode", code: "invalid" },
+        { field: "website", code: "invalid" },
+        { field: "email", code: "invalid" },
+        { field: "phone", code: "invalid" },
+        { field: "privacyPolicy", code: "invalid" },
+        { field: "terms", code: "invalid" },
+        { field: "sampleMessages", code: "required" },
+      ]),
+    );
+  });
+
+  it("does not accept letters hidden inside an EIN", () => {
+    const validation = validateBusinessVerification({
+      ...VALID_INPUT,
+      ein: "AB12-3456789",
+    });
+    expect(validation).toMatchObject({
+      valid: false,
+      issues: [{ field: "ein", code: "invalid" }],
+      value: null,
+    });
+  });
+
+  it("bounds every free-form field and the sample collection before persistence", () => {
+    const validation = validateBusinessVerification({
+      ...VALID_INPUT,
+      legalBusinessName: "x".repeat(201),
+      businessAddress: {
+        ...VALID_INPUT.businessAddress,
+        line2: "x".repeat(201),
+      },
+      messagingUseCase: "x".repeat(2_001),
+      sampleMessages: ["one", "two", "three", "four"],
+    });
+
+    expect(validation).toMatchObject({ valid: false, value: null });
+    expect(validation.issues).toEqual(
+      expect.arrayContaining([
+        { field: "legalBusinessName", code: "invalid" },
+        { field: "businessAddress.line2", code: "invalid" },
+        { field: "messagingUseCase", code: "invalid" },
+        { field: "sampleMessages", code: "invalid" },
+      ]),
+    );
+  });
+});

@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  customerBillingCapabilitiesFromSummary,
+  unavailableCustomerBillingCapabilities,
+} from "./customer-capabilities";
+
+function summary(overrides: Record<string, unknown> = {}) {
+  return {
+    effective_credits: 2_450,
+    max_phone_numbers: 3,
+    messaging_enabled: true,
+    safety_cap_credits: 10_000,
+    safety_cap_reached: false,
+    subscription_status: "active",
+    ...overrides,
+  };
+}
+
+describe("customer billing capabilities", () => {
+  it("allows messaging below the safety cap for an authorized workspace", () => {
+    expect(customerBillingCapabilitiesFromSummary(summary())).toMatchObject({
+      canAcquireNumber: true,
+      canSendMessages: true,
+      effectiveCredits: 2_450,
+      maxPhoneNumbers: 3,
+      valid: true,
+    });
+  });
+
+  it("blocks sending at the safety cap without treating overage as a block", () => {
+    expect(customerBillingCapabilitiesFromSummary(summary({
+      effective_credits: 10_000,
+      safety_cap_reached: true,
+    }))).toMatchObject({
+      canSendMessages: false,
+      safetyCapReached: true,
+    });
+    expect(customerBillingCapabilitiesFromSummary(summary({
+      effective_credits: 2_001,
+    })).canSendMessages).toBe(true);
+  });
+
+  it("allows initial number setup but blocks terminal workspaces", () => {
+    expect(customerBillingCapabilitiesFromSummary(summary({
+      messaging_enabled: false,
+      subscription_status: "not_started",
+    })).canAcquireNumber).toBe(true);
+    expect(customerBillingCapabilitiesFromSummary(summary({
+      messaging_enabled: false,
+      subscription_status: "ended",
+    })).canAcquireNumber).toBe(false);
+  });
+
+  it("fails closed when an authoritative field is missing or malformed", () => {
+    expect(customerBillingCapabilitiesFromSummary(summary({
+      messaging_enabled: undefined,
+    }))).toEqual(unavailableCustomerBillingCapabilities);
+    expect(customerBillingCapabilitiesFromSummary(null)).toEqual(
+      unavailableCustomerBillingCapabilities,
+    );
+  });
+});

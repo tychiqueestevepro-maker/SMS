@@ -1,0 +1,15 @@
+node_modules/
+.env*
+!.env.example
+.next/
+.vercel/
+coverage/
+supabase/.temp/
+supabase/.branches/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+e2e/.auth/
+*.tsbuildinfo
+/riink_logo_transparent.png

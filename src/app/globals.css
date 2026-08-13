@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f9f7;
+  --foreground: #0a0d0a;
+  --surface: #ffffff;
+  --surface-muted: #f2f7f3;
+  --border: #dce5de;
+  --muted: #6b756e;
+  --brand: #27ad4b;
+  --brand-strong: #168936;
+  --brand-soft: #eaf8ed;
+  --warning: #9a6214;
+  --warning-soft: #fff6df;
+  --danger: #b33b32;
+  --danger-soft: #fff0ee;
+  --shadow-card: 0 1px 2px rgb(7 16 9 / 0.04), 0 18px 48px rgb(24 91 42 / 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+.hero-dots {
+  background-image: radial-gradient(circle, rgb(35 174 72 / 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(circle at center, black, transparent 70%);
+}
+
+.integration-rings {
+  background:
+    radial-gradient(circle, transparent 25%, rgb(37 174 72 / 0.12) 25.3%, transparent 25.8%),
+    radial-gradient(circle, transparent 42%, rgb(37 174 72 / 0.1) 42.3%, transparent 42.8%),
+    radial-gradient(circle, transparent 59%, rgb(37 174 72 / 0.08) 59.3%, transparent 59.8%);
+}
+
+.integration-rings-active {
+  animation: riink-ring-breathe 4.8s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+.integration-flow {
+  height: 1px;
+  background: rgb(34 172 71 / 0.16);
+}
+
+.flow-packet {
+  position: absolute;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #27ad4b;
+  box-shadow: 0 0 0 5px rgb(39 173 75 / 0.1), 0 0 18px rgb(39 173 75 / 0.45);
+  opacity: 0;
+}
+
+.flow-from-left .flow-packet { animation: riink-flow-left 2.8s cubic-bezier(0.32, 0.72, 0, 1) infinite; }
+.flow-from-right .flow-packet { animation: riink-flow-right 2.8s cubic-bezier(0.32, 0.72, 0, 1) infinite; }
+.flow-packet-two { animation-delay: 0.9s !important; }
+.flow-packet-three { animation-delay: 1.8s !important; }
+
+.integration-card-inner {
+  transform: perspective(700px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform-style: preserve-3d;
+}
+
+.integration-card-inner > span:not(:first-child) {
+  transform: translateZ(10px);
+}
+
+.riink-receiver:hover .receiver-pulse,
+.receiver-pulse {
+  animation: riink-receiver-pulse 2.6s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+@keyframes riink-ring-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.55; }
+  50% { transform: translate(-50%, -50%) scale(1.04); opacity: 1; }
+}
+
+@keyframes riink-flow-left {
+  0% { left: 4%; opacity: 0; }
+  18% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { left: 50%; opacity: 0; }
+}
+
+@keyframes riink-flow-right {
+  0% { right: 4%; opacity: 0; }
+  18% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { right: 50%; opacity: 0; }
+}
+
+@keyframes riink-receiver-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(39 173 75 / 0); }
+  50% { box-shadow: 0 0 0 12px rgb(39 173 75 / 0.12); }
+}
+
+.cta-dots {
+  background-image: radial-gradient(circle, rgb(62 213 96 / 0.55) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(ellipse at center, transparent 20%, black 65%, transparent 88%);
+}
+
+.inbox-glow::before,
+.pricing-glow::before,
+.cta-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(500px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgb(42 190 79 / 0.12), transparent 42%);
+  transition: opacity 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.inbox-glow:hover::before,
+.pricing-glow:hover::before,
+.cta-glow:hover::before {
+  opacity: 1;
+}
+
+.float-one { animation: riink-float-one 7s ease-in-out infinite; }
+.float-two { animation: riink-float-two 8s ease-in-out infinite; }
+.float-three { animation: riink-float-three 6.5s ease-in-out infinite; }
+
+@keyframes riink-float-one {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  50% { translate: 0 -7px; rotate: 0.35deg; }
+}
+
+@keyframes riink-float-two {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  50% { translate: 0 6px; rotate: -0.4deg; }
+}
+
+@keyframes riink-float-three {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  50% { translate: 0 -5px; rotate: -0.3deg; }
+}
+
+.feature-card:hover .automation-arrow {
+  animation: riink-arrow-flow 1.2s ease-in-out infinite;
+}
+
+@keyframes riink-arrow-flow {
+  0%, 100% { transform: translateX(0); opacity: 0.6; }
+  50% { transform: translateX(3px); opacity: 1; }
+}
+
+.status-live::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: riink-status 2.8s ease-in-out infinite;
+}
+
+@keyframes riink-status {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #cfe8d8;
+  color: #123c29;
+}
+
+:focus-visible {
+  outline: 2px solid #2e7d57;
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

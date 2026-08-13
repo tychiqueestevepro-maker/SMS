@@ -1,0 +1,226 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+import { loadCampaignLaunchContext } from "@/app/(app)/campaigns/data";
+import type { CampaignActionResult, CampaignDraftPayload } from "@/components/campaigns/types";
+import { campaignLaunchConfirmationKey } from "@/lib/campaigns/launch";
+import { loadCustomerBillingCapabilities } from "@/lib/billing/customer-capabilities.server";
+import type { CampaignLaunchAssessment } from "@/lib/campaigns/types";
+import { validateCampaignSteps } from "@/lib/campaigns/validation";
+import { createClient } from "@/lib/supabase/server";
+
+const stepSchema = z.object({
+  body: z.string().max(1600),
+  id: z.string().uuid().optional(),
+  waitDaysAfterPrevious: z.number().int().min(1).max(365).nullable(),
+});
+
+const draftSchema = z.object({
+  campaignId: z.string().uuid().nullable(),
+  contactIds: z.array(z.string().uuid()),
+  name: z.string().trim().min(1).max(160),
+  phoneNumberId: z.string().uuid().nullable(),
+  steps: z.array(stepSchema).min(1).max(3),
+  timezone: z.string().trim().min(1),
+  sendWindowStart: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/),
+  sendWindowEnd: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/),
+  sendingDays: z.array(z.number().int().min(1).max(7)).min(1),
+  dripIntervalMinutes: z.number().int().min(1).max(1440),
+}).refine(data => {
+  return data.sendWindowStart < data.sendWindowEnd;
+}, {
+  message: "Start time must be before end time",
+  path: ["sendWindowStart"],
+});
+
+function failure(message: string, code?: CampaignActionResult["code"]): CampaignActionResult {
+  return { code, message, ok: false };
+}
+
+function confirmationRequired(
+  assessment: CampaignLaunchAssessment,
+): CampaignActionResult {
+  return {
+    assessment,
+    code: "CONFIRM_LARGE_CAMPAIGN",
+    confirmationKey: campaignLaunchConfirmationKey(assessment),
+    message: "Review this campaign before launching.",
+    ok: false,
+  };
+}
+
+async function currentWorkspaceId() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { supabase, workspaceId: null };
+  const { data } = await supabase.from("workspaces").select("id").eq("owner_id", user.id).maybeSingle();
+  return { supabase, workspaceId: (data?.id as string | undefined) ?? null };
+}
+
+export async function saveCampaignDraftAction(payload: CampaignDraftPayload): Promise<CampaignActionResult> {
+  const parsed = draftSchema.safeParse(payload);
+  if (!parsed.success) return failure("Check the campaign name, messages, and wait times.");
+  const validation = validateCampaignSteps(parsed.data.steps);
+  if (!validation.valid) return failure("Every message needs valid content and a wait of 1–365 days.");
+
+  const { supabase, workspaceId } = await currentWorkspaceId();
+  if (!workspaceId) return failure("Your workspace isn't ready yet.");
+
+  const { data, error } = await supabase.rpc("save_campaign_draft", {
+    p_campaign_id: parsed.data.campaignId,
+    p_contact_ids: Array.from(new Set(parsed.data.contactIds)),
+    p_name: parsed.data.name,
+    p_phone_number_id: parsed.data.phoneNumberId,
+    p_steps: parsed.data.steps.map((step, index) => ({
+      body: step.body,
+      step_order: index + 1,
+      wait_days_after_previous: index === 0 ? null : step.waitDaysAfterPrevious,
+    })),
+    p_workspace_id: workspaceId,
+    p_timezone: parsed.data.timezone,
+    p_send_window_start: parsed.data.sendWindowStart,
+    p_send_window_end: parsed.data.sendWindowEnd,
+    p_sending_days: parsed.data.sendingDays,
+    p_drip_interval_minutes: parsed.data.dripIntervalMinutes,
+  });
+  if (error) return failure("We couldn't save this campaign. Please try again.");
+
+  const record = data as string | { id?: string } | null;
+  const campaignId = typeof record === "string" ? record : record?.id ?? parsed.data.campaignId ?? undefined;
+  if (!campaignId) return failure("We couldn't save this campaign. Please try again.");
+
+  revalidatePath("/campaigns");
+  revalidatePath(`/campaigns/${campaignId}`);
+  return { campaignId, message: "Draft saved.", ok: true, status: "draft" };
+}
+
+export async function launchCampaignAction(
+  campaignId: string,
+  confirmationKey: string | null,
+  consentConfirmed: boolean,
+): Promise<CampaignActionResult> {
+  const parsedId = z.string().uuid().safeParse(campaignId);
+  if (!parsedId.success) return failure("This campaign couldn't be found.");
+  const parsedConfirmation = z.string().max(256).nullable().safeParse(confirmationKey);
+  if (!parsedConfirmation.success) return failure("Review this campaign before launching.");
+  if (consentConfirmed !== true) return failure("Confirm that these contacts agreed to receive messages.");
+
+  const context = await loadCampaignLaunchContext(parsedId.data);
+  if (!context) return failure("This draft is no longer available.");
+  if (!context.campaign.messagingAvailable) {
+    return context.campaign.safetyCapReached
+      ? failure(
+          "Sending is paused because your SMS credit safety limit has been reached.",
+          "SAFETY_CAP_REACHED",
+        )
+      : failure(
+          "Messaging is currently unavailable. Check Billing in Settings.",
+          "MESSAGING_UNAVAILABLE",
+        );
+  }
+  const readyNumber = context.campaign.phoneNumbers.some(
+    (phone) => phone.id === context.campaign.phoneNumberId && phone.status === "ready",
+  );
+  if (!readyNumber) return failure("This phone number isn't ready for messaging yet.", "NO_READY_NUMBER");
+
+  const assessment = context.assessment;
+  if (assessment.eligibleRecipientCount === 0) {
+    return failure("No selected contacts are currently eligible.", "NO_ELIGIBLE_RECIPIENTS");
+  }
+
+  const currentConfirmationKey = campaignLaunchConfirmationKey(assessment);
+  const confirmedLargeLaunch =
+    assessment.requiresConfirmation && parsedConfirmation.data === currentConfirmationKey;
+  if (assessment.requiresConfirmation && !confirmedLargeLaunch) {
+    return confirmationRequired(assessment);
+  }
+
+  const { supabase, workspaceId } = await currentWorkspaceId();
+  if (!workspaceId) return failure("Your workspace isn't ready yet.");
+  const { error } = await supabase.rpc("launch_campaign", {
+    p_campaign_id: parsedId.data,
+    p_confirmed_assessment: confirmedLargeLaunch
+      ? {
+          current_effective_usage_credits: assessment.currentEffectiveUsageCredits,
+          eligible_recipient_count: assessment.eligibleRecipientCount,
+          estimated_first_step_credits: assessment.estimatedFirstStepCredits,
+          estimated_new_overage_credits: assessment.estimatedNewOverageCredits,
+          included_credits: assessment.includedCredits,
+          included_credits_remaining: assessment.includedCreditsRemaining,
+          projected_usage_credits: assessment.projectedUsageCredits,
+          reasons: assessment.reasons,
+          requires_confirmation: assessment.requiresConfirmation,
+        }
+      : null,
+    p_confirmed_contact_count: assessment.eligibleRecipientCount,
+    p_confirmed_large_launch: confirmedLargeLaunch,
+    p_consent_confirmed: true,
+  });
+  if (error) {
+    if (confirmedLargeLaunch) {
+      const refreshed = await loadCampaignLaunchContext(parsedId.data);
+      if (refreshed?.assessment.requiresConfirmation) {
+        return confirmationRequired(refreshed.assessment);
+      }
+    }
+    return failure("We couldn't launch this campaign. Please review it and try again.");
+  }
+
+  revalidatePath("/campaigns");
+  revalidatePath(`/campaigns/${parsedId.data}`);
+  return { campaignId: parsedId.data, message: "Campaign launched.", ok: true, status: "active" };
+}
+
+async function transitionCampaign(
+  campaignId: string,
+  rpcName: "pause_campaign" | "resume_campaign" | "delete_campaign",
+  successMessage: string,
+  status?: "active" | "paused",
+  requireMessaging = false,
+): Promise<CampaignActionResult> {
+  const parsedId = z.string().uuid().safeParse(campaignId);
+  if (!parsedId.success) return failure("This campaign couldn't be found.");
+  const { supabase, workspaceId } = await currentWorkspaceId();
+  if (!workspaceId) return failure("Your workspace isn't ready yet.");
+  if (requireMessaging) {
+    const capabilities = await loadCustomerBillingCapabilities(supabase);
+    if (!capabilities.canSendMessages) {
+      return capabilities.safetyCapReached
+        ? failure(
+            "Sending is paused because your SMS credit safety limit has been reached.",
+            "SAFETY_CAP_REACHED",
+          )
+        : failure(
+            "Messaging is currently unavailable. Check Billing in Settings.",
+            "MESSAGING_UNAVAILABLE",
+          );
+    }
+  }
+  const { error } = await supabase.rpc(rpcName, { p_campaign_id: parsedId.data });
+  if (error) return failure("We couldn't update this campaign. Please try again.");
+  revalidatePath("/campaigns");
+  revalidatePath(`/campaigns/${parsedId.data}`);
+  return { campaignId: parsedId.data, message: successMessage, ok: true, status };
+}
+
+export async function pauseCampaignAction(campaignId: string) {
+  return transitionCampaign(campaignId, "pause_campaign", "Campaign paused.", "paused");
+}
+
+export async function resumeCampaignAction(campaignId: string) {
+  return transitionCampaign(
+    campaignId,
+    "resume_campaign",
+    "Campaign resumed.",
+    "active",
+    true,
+  );
+}
+
+export async function deleteCampaignAction(campaignId: string) {
+  return transitionCampaign(campaignId, "delete_campaign", "Campaign deleted.");
+}
