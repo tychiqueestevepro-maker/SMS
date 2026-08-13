@@ -100,11 +100,35 @@ describe("PaymentMethodDialog", () => {
     });
     render(<PaymentMethodDialog onClose={vi.fn()} onComplete={onComplete} session={session} />);
 
+    fireEvent.change(screen.getByLabelText(/Promo code/), {
+      target: { value: " save20 " },
+    });
     await readyAndSubmit();
 
-    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith("SAVE20"));
     expect(mocks.confirmPaymentSetupAction).toHaveBeenCalledWith("seti_1");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows the promo code field directly below the card details", () => {
+    render(<PaymentMethodDialog onClose={vi.fn()} onComplete={vi.fn()} session={session} />);
+
+    expect(screen.getByLabelText(/Promo code/)).toBeTruthy();
+    expect(
+      screen.getByText("Your code will be checked when you start the subscription."),
+    ).toBeTruthy();
+  });
+
+  it("rejects malformed promo copy before saving the card", async () => {
+    render(<PaymentMethodDialog onClose={vi.fn()} onComplete={vi.fn()} session={session} />);
+    fireEvent.change(screen.getByLabelText(/Promo code/), {
+      target: { value: "INVALID CODE" },
+    });
+
+    await readyAndSubmit();
+
+    expect(await screen.findByText("Enter a valid promo code.")).toBeTruthy();
+    expect(mocks.confirmCardSetup).not.toHaveBeenCalled();
   });
 
   it("keeps the dialog open when the confirmed card cannot be persisted", async () => {

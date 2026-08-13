@@ -22,7 +22,7 @@ import {
 type CardSetupFormProps = {
   clientSecret: string;
   onCancel: () => void;
-  onComplete: () => void;
+  onComplete: (promotionCode: string) => void;
 };
 
 const cardOptions = {
@@ -48,10 +48,16 @@ function CardSetupForm({ clientSecret, onCancel, onComplete }: CardSetupFormProp
   const [isReady, setIsReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [promotionCode, setPromotionCode] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!stripe || !elements || isSaving) return;
+    const normalizedPromotionCode = promotionCode.trim().toUpperCase();
+    if (!/^[A-Z0-9-]*$/.test(normalizedPromotionCode)) {
+      setErrorMessage("Enter a valid promo code.");
+      return;
+    }
     const card = elements.getElement(CardElement);
     if (!card) {
       setErrorMessage(PAYMENT_METHOD_SAVE_FAILED_MESSAGE);
@@ -81,7 +87,7 @@ function CardSetupForm({ clientSecret, onCancel, onComplete }: CardSetupFormProp
         setErrorMessage(saved.message);
         return;
       }
-      onComplete();
+      onComplete(normalizedPromotionCode);
     } catch (error) {
       setErrorMessage(paymentSetupErrorMessage(error));
     } finally {
@@ -114,6 +120,27 @@ function CardSetupForm({ clientSecret, onCancel, onComplete }: CardSetupFormProp
         <p className="mt-3 text-xs leading-5 text-[#738078]">
           Your card will be saved securely for your Riink subscription. Billing starts when your phone number is ready.
         </p>
+        <div className="mt-4">
+          <label
+            className="text-sm font-semibold text-[#26342b]"
+            htmlFor="payment-promotion-code"
+          >
+            Promo code <span className="font-normal text-[#68736c]">(optional)</span>
+          </label>
+          <input
+            autoComplete="off"
+            className="mt-2 w-full rounded-lg border border-[#d7dfd9] bg-white px-3 py-2 text-sm text-[#26342b] outline-none transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] placeholder:text-[#9aa39d] focus:border-[#78a58b] focus:ring-2 focus:ring-[#dbece1]"
+            disabled={isSaving}
+            id="payment-promotion-code"
+            maxLength={50}
+            onChange={(event) => setPromotionCode(event.target.value)}
+            placeholder="Enter your code"
+            value={promotionCode}
+          />
+          <p className="mt-2 text-xs text-[#738078]">
+            Your code will be checked when you start the subscription.
+          </p>
+        </div>
         {errorMessage ? (
           <p className="mt-3 rounded-lg border border-[#f0cbc6] bg-[#fff3f1] px-3.5 py-3 text-sm text-[#8f312a]" role="alert">
             {errorMessage}
@@ -138,7 +165,7 @@ export function PaymentMethodDialog({
   session,
 }: {
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (promotionCode: string) => void;
   session: BillingSetupActionSuccess;
 }) {
   const paymentClient = useMemo(

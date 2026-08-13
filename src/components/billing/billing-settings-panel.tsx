@@ -90,7 +90,8 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
     });
   }
 
-  function completePaymentSetup() {
+  function completePaymentSetup(savedPromotionCode: string) {
+    setPromotionCode(savedPromotionCode);
     setSetupSession(null);
     setNotice({ message: "Payment method saved.", tone: "success" });
     router.refresh();

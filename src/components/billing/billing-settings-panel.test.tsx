@@ -32,12 +32,12 @@ vi.mock("@/components/billing/payment-method-dialog", () => ({
     onComplete,
     session,
   }: {
-    onComplete: () => void;
+    onComplete: (promotionCode: string) => void;
     session: { clientSecret: string };
   }) => (
     <div aria-label="Embedded payment form" role="dialog">
       <span>{session.clientSecret}</span>
-      <button onClick={onComplete} type="button">Complete card setup</button>
+      <button onClick={() => onComplete("SAVE20")} type="button">Complete card setup</button>
     </div>
   ),
 }));
