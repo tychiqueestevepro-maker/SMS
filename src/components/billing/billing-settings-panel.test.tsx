@@ -155,6 +155,24 @@ describe("BillingSettingsPanel", () => {
     expect(mocks.refresh).toHaveBeenCalledOnce();
   });
 
+  it("shows card setup for the configured account while its number is Pending", () => {
+    const configured = settingsData(0);
+    configured.directActivationAccount = true;
+    configured.subscription = {
+      canCancel: false,
+      canManageBilling: false,
+      canSetUpPayment: true,
+      description: "Add a payment method to connect your French number and start your plan.",
+      label: "Setup needed",
+      status: "setup_required",
+    };
+
+    render(<BillingSettingsPanel data={configured} />);
+
+    expect(screen.getByRole("button", { name: "Add payment method" })).toBeTruthy();
+    expect(screen.queryByText("Phone number required")).toBeNull();
+  });
+
   it("requires explicit confirmation before scheduling cancellation", async () => {
     mocks.requestBillingCancellation.mockResolvedValue({
       alreadyScheduled: false,

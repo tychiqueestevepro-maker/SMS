@@ -12,7 +12,6 @@ import type {
 import { getApplicationOrigin } from "@/lib/application-url";
 import { ProductBillingError } from "@/lib/billing/gateway";
 import {
-  CONFIGURED_EXISTING_NUMBER,
   isConfiguredExistingNumberOwner,
 } from "@/lib/numbers/configured-existing-number.server";
 import { SupabaseBillingRuntimeRepository } from "@/lib/billing/supabase-runtime-repository.server";
@@ -24,6 +23,7 @@ import {
   ensureWorkspaceSubscriptionActive,
 } from "@/lib/runtime/billing.server";
 import { stripeBillingGatewayFromEnvironment } from "@/lib/providers/stripe/server";
+import { configuredNumberServiceFromEnvironment } from "@/lib/runtime/messaging.server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -89,18 +89,7 @@ export async function activateConfiguredAccountSubscription(): Promise<BillingAc
   }
 
   try {
-    const supabase = await createClient();
-    const { count, error } = await supabase
-      .from("phone_numbers")
-      .select("id", { count: "exact", head: true })
-      .eq("workspace_id", context.workspaceId)
-      .eq("phone_e164", CONFIGURED_EXISTING_NUMBER.phoneNumber)
-      .eq("status", "ready")
-      .is("deleted_at", null);
-    if (error || count !== 1) {
-      throw new ProductBillingError("BILLING_ACTIVATION_FAILED");
-    }
-
+    await configuredNumberServiceFromEnvironment().connect(context.workspaceId);
     await ensureWorkspaceSubscriptionActive(context.workspaceId);
     logServerEvent(
       "info",

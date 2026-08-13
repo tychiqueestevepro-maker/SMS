@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PaymentMethodDialog } from "./payment-method-dialog";
 
 const mocks = vi.hoisted(() => ({
+  confirmPaymentSetupAction: vi.fn(),
   confirmCardSetup: vi.fn(),
   getElement: vi.fn(() => ({ element: "card" })),
   loadStripe: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock("@/app/(app)/settings/billing-actions", () => ({
+  confirmPaymentSetupAction: mocks.confirmPaymentSetupAction,
 }));
 
 vi.mock("@stripe/stripe-js", () => ({ loadStripe: mocks.loadStripe }));
@@ -44,6 +49,10 @@ const session = {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+beforeEach(() => {
+  mocks.confirmPaymentSetupAction.mockResolvedValue({ ok: true });
 });
 
 async function readyAndSubmit() {
@@ -86,12 +95,34 @@ describe("PaymentMethodDialog", () => {
 
   it("closes through the completion callback after a successful SetupIntent", async () => {
     const onComplete = vi.fn();
-    mocks.confirmCardSetup.mockResolvedValue({ setupIntent: { status: "succeeded" } });
+    mocks.confirmCardSetup.mockResolvedValue({
+      setupIntent: { id: "seti_1", status: "succeeded" },
+    });
     render(<PaymentMethodDialog onClose={vi.fn()} onComplete={onComplete} session={session} />);
 
     await readyAndSubmit();
 
-    expect(onComplete).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+    expect(mocks.confirmPaymentSetupAction).toHaveBeenCalledWith("seti_1");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the dialog open when the confirmed card cannot be persisted", async () => {
+    const onComplete = vi.fn();
+    mocks.confirmCardSetup.mockResolvedValue({
+      setupIntent: { id: "seti_1", status: "succeeded" },
+    });
+    mocks.confirmPaymentSetupAction.mockResolvedValue({
+      message: "Payment method could not be confirmed. Please try again.",
+      ok: false,
+    });
+    render(<PaymentMethodDialog onClose={vi.fn()} onComplete={onComplete} session={session} />);
+
+    await readyAndSubmit();
+
+    expect(
+      await screen.findByText("Payment method could not be confirmed. Please try again."),
+    ).toBeTruthy();
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });

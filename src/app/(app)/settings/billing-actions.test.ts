@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
+  connectConfiguredNumber: vi.fn(),
   ensureSubscription: vi.fn(),
   log: vi.fn(),
   requestCancellation: vi.fn(),
@@ -20,6 +21,11 @@ vi.mock("@/lib/runtime/billing.server", () => ({
     requestCancellation: mocks.requestCancellation,
   }),
   ensureWorkspaceSubscriptionActive: mocks.ensureSubscription,
+}));
+vi.mock("@/lib/runtime/messaging.server", () => ({
+  configuredNumberServiceFromEnvironment: () => ({
+    connect: mocks.connectConfiguredNumber,
+  }),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 
@@ -78,6 +84,7 @@ describe("requestBillingCancellation", () => {
     vi.clearAllMocks();
     mocks.createClient.mockResolvedValue(authenticatedClient());
     mocks.requestCancellation.mockResolvedValue({ alreadyScheduled: false });
+    mocks.connectConfiguredNumber.mockResolvedValue({ phoneNumberId: "number-1" });
     mocks.ensureSubscription.mockResolvedValue({ active: true });
   });
 
@@ -154,6 +161,10 @@ describe("requestBillingCancellation", () => {
       ok: true,
     });
     expect(mocks.ensureSubscription).toHaveBeenCalledWith(WORKSPACE_ID);
+    expect(mocks.connectConfiguredNumber).toHaveBeenCalledWith(WORKSPACE_ID);
+    expect(mocks.connectConfiguredNumber.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureSubscription.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
   });
 
@@ -163,5 +174,6 @@ describe("requestBillingCancellation", () => {
       ok: false,
     });
     expect(mocks.ensureSubscription).not.toHaveBeenCalled();
+    expect(mocks.connectConfiguredNumber).not.toHaveBeenCalled();
   });
 });

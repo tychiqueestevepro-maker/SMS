@@ -356,7 +356,6 @@ export async function loadBillingSettingsData(): Promise<BillingSettingsData> {
   });
   const canActivateSubscriptionDirectly =
     directActivationAccount &&
-    (readyCount ?? 0) > 0 &&
     paymentMethod.status === "saved" &&
     (summary?.subscription_status === "not_started" ||
       summary?.subscription_status === "setup_required" ||
@@ -371,18 +370,33 @@ export async function loadBillingSettingsData(): Promise<BillingSettingsData> {
     ),
   };
 
+  const subscription = subscriptionView(
+    summary?.subscription_status,
+    (readyCount ?? 0) > 0,
+    paymentMethod,
+    capabilities,
+    explicitTrue(summary?.messaging_enabled),
+  );
+  const configuredSubscription =
+    directActivationAccount &&
+    subscription.status === "awaiting_number"
+      ? {
+          ...subscription,
+          description:
+            paymentMethod.status === "saved"
+              ? "Your configured French number is ready to connect when you start the plan."
+              : "Add a payment method to connect your French number and start your plan.",
+          label: paymentMethod.status === "saved" ? "Ready to start" : "Setup needed",
+          status: "setup_required" as const,
+        }
+      : subscription;
+
   return {
     canActivateSubscriptionDirectly,
     directActivationAccount,
     paymentMethod,
     plan,
-    subscription: subscriptionView(
-      summary?.subscription_status,
-      (readyCount ?? 0) > 0,
-      paymentMethod,
-      capabilities,
-      explicitTrue(summary?.messaging_enabled),
-    ),
+    subscription: configuredSubscription,
     usage: usageView(summary, plan),
   };
 }

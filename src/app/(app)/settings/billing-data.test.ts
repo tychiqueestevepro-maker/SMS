@@ -174,7 +174,7 @@ describe("loadBillingSettingsData", () => {
     expect(data.subscription.status).toBe("active");
   });
 
-  it("offers direct activation only to the configured owner with a ready number and saved card", async () => {
+  it("offers direct activation to the configured owner with a saved card while its number is Pending", async () => {
     createClient.mockResolvedValue(
       billingClient(
         {
@@ -182,7 +182,7 @@ describe("loadBillingSettingsData", () => {
           subscription_status: "setup_required",
         },
         {
-          readyCount: 1,
+          readyCount: 0,
           user: {
             email: "tychiqueesteve2005@gmail.com",
             id: "813e98ef-74da-4752-a228-3a018e56d777",
@@ -197,7 +197,41 @@ describe("loadBillingSettingsData", () => {
       canActivateSubscriptionDirectly: true,
       directActivationAccount: true,
       subscription: {
+        description:
+          "Your configured French number is ready to connect when you start the plan.",
         label: "Ready to start",
+        status: "setup_required",
+      },
+    });
+  });
+
+  it("offers card setup to the configured owner before the number is connected", async () => {
+    createClient.mockResolvedValue(
+      billingClient(
+        {
+          can_setup_payment: true,
+          payment_method_status: "missing",
+          subscription_status: "not_started",
+        },
+        {
+          readyCount: 0,
+          user: {
+            email: "tychiqueesteve2005@gmail.com",
+            id: "813e98ef-74da-4752-a228-3a018e56d777",
+          },
+        },
+      ),
+    );
+
+    const data = await loadBillingSettingsData();
+
+    expect(data).toMatchObject({
+      canActivateSubscriptionDirectly: false,
+      directActivationAccount: true,
+      subscription: {
+        canSetUpPayment: true,
+        description: "Add a payment method to connect your French number and start your plan.",
+        label: "Setup needed",
         status: "setup_required",
       },
     });

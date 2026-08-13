@@ -9,6 +9,7 @@ import {
 } from "@/lib/providers/stripe/browser";
 import { useMemo, useState, type FormEvent } from "react";
 
+import { confirmPaymentSetupAction } from "@/app/(app)/settings/billing-actions";
 import { Modal } from "@/components/contacts/modal";
 import type { BillingSetupActionSuccess } from "@/components/billing/types";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ const cardOptions = {
   style: {
     base: {
       color: "#26342b",
-      fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+      fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif",
       fontSize: "15px",
       fontSmoothing: "antialiased",
       iconColor: "#536159",
@@ -73,6 +74,11 @@ function CardSetupForm({ clientSecret, onCancel, onComplete }: CardSetupFormProp
         result.setupIntent?.status !== "processing"
       ) {
         setErrorMessage(PAYMENT_METHOD_SAVE_FAILED_MESSAGE);
+        return;
+      }
+      const saved = await confirmPaymentSetupAction(result.setupIntent.id);
+      if (!saved.ok) {
+        setErrorMessage(saved.message);
         return;
       }
       onComplete();

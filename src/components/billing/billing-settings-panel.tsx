@@ -255,7 +255,6 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
           </div>
 
           {subscription.canSetUpPayment &&
-          subscription.status !== "awaiting_number" &&
           paymentMethod.status !== "saved" ? (
             <Button
               className="mt-4 w-full"
