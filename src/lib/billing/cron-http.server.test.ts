@@ -6,7 +6,10 @@ vi.mock("@/lib/observability/logger", () => ({ logServerEvent: vi.fn() }));
 
 import { logServerEvent } from "@/lib/observability/logger";
 
-import { processBillingCronRequest } from "./cron-http.server";
+import {
+  processBillingCronRequest,
+  runBillingMaintenance,
+} from "./cron-http.server";
 
 function request(authorization?: string) {
   return new Request("https://www.riink.app/api/cron/billing", {
@@ -64,5 +67,28 @@ describe("processBillingCronRequest", () => {
       { event: "billing_cron_failed" },
       { failure_code: "billing_maintenance_failed" },
     );
+  });
+});
+
+describe("runBillingMaintenance", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns a serializable result for Inngest", async () => {
+    const expireGracePeriods = vi.fn(async () => ({ expiredCount: 2 }));
+
+    await expect(
+      runBillingMaintenance({ service: () => ({ expireGracePeriods }) }),
+    ).resolves.toEqual({ expiredGracePeriods: 2 });
+    expect(expireGracePeriods).toHaveBeenCalledWith(250);
+  });
+
+  it("throws a neutral error so Inngest can retry", async () => {
+    const expireGracePeriods = vi.fn(async () => {
+      throw new Error("private database detail");
+    });
+
+    await expect(
+      runBillingMaintenance({ service: () => ({ expireGracePeriods }) }),
+    ).rejects.toMatchObject({ name: "BillingMaintenanceError" });
   });
 });

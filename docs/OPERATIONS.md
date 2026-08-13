@@ -28,6 +28,7 @@ Before the first remote migration or deployment:
 Configure these HTTPS endpoints:
 
 - SMS provider inbound and status callbacks: `POST /api/webhooks/sms`.
+- Hosted-number import status callbacks: `POST /api/webhooks/number-imports`.
 - Stripe notifications: `POST /api/webhooks/stripe`.
 
 The Stripe endpoint accepts the event families used by the billing runtime:
@@ -37,10 +38,20 @@ The Stripe endpoint accepts the event families used by the billing runtime:
 - `customer.subscription.created`, `customer.subscription.updated`, and
   `customer.subscription.deleted`.
 
-Vercel schedules `/api/cron/messaging` every minute and `/api/cron/billing`
-hourly. Both require the configured `CRON_SECRET`. A failed job must be retried
-through the same endpoint; never bypass the database claim or reconciliation
-RPCs with an ad-hoc provider call.
+Inngest schedules messaging maintenance every three minutes and billing
+maintenance hourly through `GET|POST|PUT /api/inngest`. Install the official
+Inngest integration on the Vercel project so it configures
+`INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`, and synchronizes the functions after
+each deployment. The three-minute cadence plus one durable step per function
+keeps expected Hobby usage around 30,240 executions per 30-day month, leaving
+retry headroom below the current 50,000-execution allowance.
+
+The legacy `/api/cron/messaging` and `/api/cron/billing` routes remain as
+operator-only fallbacks and require `CRON_SECRET`, but they are no longer
+declared as Vercel Cron Jobs. A failed job must be retried through Inngest or the
+same protected route; never bypass the database claim or reconciliation RPCs
+with an ad-hoc provider call. `dispatch_unknown` must never be resent
+automatically.
 
 ## Resend email and support forwarding
 

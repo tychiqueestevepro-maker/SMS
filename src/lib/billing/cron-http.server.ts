@@ -13,6 +13,43 @@ export interface BillingCronRuntime {
 
 const GRACE_EXPIRATION_BATCH_SIZE = 250;
 
+export class BillingMaintenanceError extends Error {
+  constructor() {
+    super("Billing maintenance could not be completed.");
+    this.name = "BillingMaintenanceError";
+  }
+}
+
+export async function runBillingMaintenance(
+  runtime: BillingCronRuntime,
+): Promise<{ expiredGracePeriods: number }> {
+  try {
+    const result = await runtime.service().expireGracePeriods(
+      GRACE_EXPIRATION_BATCH_SIZE,
+    );
+    logServerEvent(
+      "info",
+      { event: "billing_cron_completed" },
+      { expired_grace_periods: result.expiredCount },
+    );
+    return { expiredGracePeriods: result.expiredCount };
+  } catch (error) {
+    const failureCode =
+      error &&
+      typeof error === "object" &&
+      "operation" in error &&
+      typeof (error as { operation?: unknown }).operation === "string"
+        ? (error as { operation: string }).operation
+        : "billing_maintenance_failed";
+    logServerEvent(
+      "error",
+      { event: "billing_cron_failed" },
+      { failure_code: failureCode },
+    );
+    throw new BillingMaintenanceError();
+  }
+}
+
 export async function processBillingCronRequest(
   request: Request,
   runtime: BillingCronRuntime,
@@ -28,28 +65,8 @@ export async function processBillingCronRequest(
   }
 
   try {
-    const result = await runtime.service().expireGracePeriods(
-      GRACE_EXPIRATION_BATCH_SIZE,
-    );
-    logServerEvent(
-      "info",
-      { event: "billing_cron_completed" },
-      { expired_grace_periods: result.expiredCount },
-    );
-    return Response.json({ expiredGracePeriods: result.expiredCount });
-  } catch (error) {
-    const failureCode =
-      error &&
-      typeof error === "object" &&
-      "operation" in error &&
-      typeof (error as { operation?: unknown }).operation === "string"
-        ? (error as { operation: string }).operation
-        : "billing_maintenance_failed";
-    logServerEvent(
-      "error",
-      { event: "billing_cron_failed" },
-      { failure_code: failureCode },
-    );
+    return Response.json(await runBillingMaintenance(runtime));
+  } catch {
     return Response.json(
       { error: "Billing maintenance couldn't be completed." },
       { status: 503 },

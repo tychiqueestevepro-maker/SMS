@@ -37,7 +37,11 @@ async function collect(directory) {
     const normalized = path.replaceAll('\\', '/')
     if (normalized.includes('/app/admin/') || normalized.endsWith('/app/admin')) continue
     if (entry.isDirectory()) files.push(...(await collect(path)))
-    if (entry.isFile() && ['.ts', '.tsx'].includes(extname(entry.name))) files.push(path)
+    if (
+      entry.isFile() &&
+      ['.ts', '.tsx'].includes(extname(entry.name)) &&
+      !entry.name.includes('.test.')
+    ) files.push(path)
   }
 
   return files

@@ -11,6 +11,10 @@ Riink is a focused SMS outreach CRM for campaigns, contacts, conversations, and 
 3. Start local Supabase with `npx supabase start`.
 4. Start the app with `npm run dev`.
 
+Scheduled production maintenance is orchestrated by Inngest. For local workflow
+inspection, run the app and the Inngest Dev Server with `npx inngest-cli@latest
+dev`; production setup is documented in `docs/OPERATIONS.md`.
+
 Quality checks:
 
 ```powershell
