@@ -22,7 +22,6 @@ import {
   numberProvisioningServiceFromEnvironment,
   numberImportServiceFromEnvironment,
 } from "@/lib/runtime/messaging.server";
-import { ensureWorkspaceSubscriptionActive } from "@/lib/runtime/billing.server";
 
 function failure(error: unknown): NumberActionResult {
   if (error instanceof NumberProductError || error instanceof ProductMessagingError) {
@@ -116,6 +115,7 @@ export async function startNumberOnboardingAction(
 
     const context = await loadNumberServerContext();
     if (!context) throw new ProductMessagingError("PHONE_NUMBER_OPERATION_FAILED");
+    if (!context.paymentMethodSaved) throw new NumberProductError("PAYMENT_METHOD_REQUIRED");
     if (!context.numberAcquisitionAllowed) {
       throw new ProductMessagingError("PHONE_NUMBER_OPERATION_FAILED");
     }
@@ -176,47 +176,6 @@ export async function removePhoneNumberAction(phoneNumberIdInput: string): Promi
     revalidatePath("/settings");
     revalidatePath("/campaigns");
     return { message: "Phone number removed.", ok: true };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-/**
- * Called from the onboarding dialog when the user has entered both business
- * details AND payment information. Activates the Stripe subscription first,
- * then starts number provisioning.
- */
-export async function startNumberOnboardingWithPaymentAction(
-  selectionIdInput: string,
-  businessInput: BusinessVerificationInput,
-): Promise<NumberActionResult> {
-  try {
-    const selectionId = z.string().trim().min(1).max(2_000).parse(selectionIdInput);
-    const verification = validateBusinessVerification(businessInput);
-    if (!verification.valid) {
-      return {
-        code: "NUMBER_SETUP_INVALID",
-        fieldErrors: Array.from(new Set(verification.issues.map((issue) => issue.field))),
-        message: "Some business verification details need your attention.",
-        ok: false,
-      };
-    }
-
-    const context = await loadNumberServerContext();
-    if (!context) throw new ProductMessagingError("PHONE_NUMBER_OPERATION_FAILED");
-
-    // Ensure subscription is active before provisioning the number.
-    await ensureWorkspaceSubscriptionActive(context.workspaceId);
-
-    await numberProvisioningServiceFromEnvironment().startNumberOnboarding({
-      businessVerification: verification.value,
-      selectionToken: selectionId,
-      workspaceId: context.workspaceId,
-    });
-
-    revalidatePath("/settings");
-    revalidatePath("/campaigns/new");
-    return { message: "Number setup started.", ok: true };
   } catch (error) {
     return failure(error);
   }
@@ -364,8 +323,8 @@ export async function requestFrenchNumberImportAction(
   }
 }
 
-/** Step 2 of import flow: activate subscription if needed, then start the hosted number import. */
-export async function startNumberImportWithPaymentAction(
+/** Step 2 of import flow: verify the saved card, then start the hosted number import. */
+export async function startNumberImportAction(
   eligibilityTokenInput: string,
   ownerEmailInput: string,
 ): Promise<NumberActionResult> {
@@ -374,9 +333,7 @@ export async function startNumberImportWithPaymentAction(
     const ownerEmail = z.string().trim().email().parse(ownerEmailInput);
     const context = await loadNumberServerContext();
     if (!context) throw new ProductMessagingError("PHONE_NUMBER_OPERATION_FAILED");
-
-    // Activate subscription before importing.
-    await ensureWorkspaceSubscriptionActive(context.workspaceId);
+    if (!context.paymentMethodSaved) throw new NumberProductError("PAYMENT_METHOD_REQUIRED");
 
     await numberImportServiceFromEnvironment().startImport({
       eligibilityToken,

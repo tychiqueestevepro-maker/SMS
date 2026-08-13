@@ -9,7 +9,7 @@ import {
 } from "@/app/(app)/settings/billing-actions";
 import {
   searchAvailableNumbersAction,
-  startNumberOnboardingWithPaymentAction,
+  startNumberOnboardingAction,
 } from "@/app/(app)/settings/numbers-actions";
 import { Modal } from "@/components/contacts/modal";
 import type { NumberActionResult } from "@/components/numbers/types";
@@ -76,13 +76,13 @@ function PaymentStep({
         setError(confirmError.message ?? "Payment confirmation failed. Please try again.");
         return;
       }
-      // 2. Save payment method synchronously in DB before activating subscription
+      // 2. Save the payment method synchronously without activating the subscription.
       const saved = await confirmPaymentSetupAction(setupIntent?.id ?? "");
       if (!saved.ok) {
         setError(saved.message);
         return;
       }
-      // 3. Payment method persisted → parent activates subscription + provisions number
+      // 3. The saved card lets setup start. Billing begins only when the number is Ready.
       onSuccess();
     });
   }
@@ -114,7 +114,7 @@ function PaymentStep({
         </Button>
         <Button disabled={busy || !stripe} onClick={confirmPayment}>
           {busy ? <LoaderCircle aria-hidden="true" className="animate-spin" size={15} /> : null}
-          Confirm payment method
+          Save payment method
         </Button>
       </div>
     </div>
@@ -131,7 +131,7 @@ export function NumberOnboardingDialog({
   needsBillingSetup,
   billingPublishableKey,
 }: NumberOnboardingDialogProps) {
-  // Steps: 1=area code, 2=pick number, 3=business, 4=payment (conditional)
+  // Steps: 1=area code, 2=pick number, 3=business, 4=card details (conditional)
   const totalSteps = needsBillingSetup ? 4 : 3;
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [countryCode, setCountryCode] = useState<"US" | "FR">("US");
@@ -229,9 +229,9 @@ export function NumberOnboardingDialog({
       return;
     }
 
-    // Payment already confirmed or not needed — go straight to onboarding.
+    // The card is already saved or the subscription is active, so setup can start.
     startTransition(async () => {
-      const result = await startNumberOnboardingWithPaymentAction(selected.selectionId, business);
+      const result = await startNumberOnboardingAction(selected.selectionId, business);
       if (!result.ok) {
         setError(result.message);
         setFieldErrors(new Set(result.fieldErrors ?? []));
@@ -249,7 +249,7 @@ export function NumberOnboardingDialog({
     if (!pending) return;
     setError(null);
     startTransition(async () => {
-      const result = await startNumberOnboardingWithPaymentAction(
+      const result = await startNumberOnboardingAction(
         pending.selectionId,
         pending.business,
       );
@@ -275,7 +275,7 @@ export function NumberOnboardingDialog({
 
   const stepLabels =
     totalSteps === 4
-      ? ["Location", "Phone number", "Business details", "Payment"]
+      ? ["Location", "Phone number", "Business details", "Card details"]
       : ["Location", "Phone number", "Business details"];
 
   const stripePromise =
@@ -664,13 +664,13 @@ export function NumberOnboardingDialog({
               {isPending ? (
                 <LoaderCircle aria-hidden="true" className="animate-spin" size={15} />
               ) : null}
-              {needsBillingSetup ? "Continue to payment" : "Start number setup"}
+              {needsBillingSetup ? "Continue to card setup" : "Start number setup"}
             </Button>
           </div>
         </form>
       ) : null}
 
-      {/* Step 4 — Payment (only when needsBillingSetup) */}
+      {/* Step 4: save a card without starting billing. */}
       {step === 4 && stripeClientSecret && stripePromise ? (
         <Elements
           stripe={stripePromise}

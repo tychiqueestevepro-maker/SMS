@@ -7,7 +7,7 @@ import { createBillingSetupSession, confirmPaymentSetupAction } from "@/app/(app
 import {
   checkNumberImportEligibilityAction,
   requestFrenchNumberImportAction,
-  startNumberImportWithPaymentAction,
+  startNumberImportAction,
 } from "@/app/(app)/settings/numbers-actions";
 import { Modal } from "@/components/contacts/modal";
 import type { NumberActionResult } from "@/components/numbers/types";
@@ -62,7 +62,7 @@ function PaymentStep({
         setError(saved.message);
         return;
       }
-      // 3. Payment method is now in DB → parent can activate subscription
+      // 3. The saved card lets the import start. Billing begins only when the number is Ready.
       onSuccess();
     });
   }
@@ -93,7 +93,7 @@ function PaymentStep({
         </Button>
         <Button disabled={busy || !stripe} onClick={confirmPayment}>
           {busy ? <LoaderCircle aria-hidden="true" className="animate-spin" size={15} /> : null}
-          Confirm payment method
+          Save payment method
         </Button>
       </div>
     </div>
@@ -181,7 +181,7 @@ export function NumberImportDialog({
       return;
     }
 
-    // Payment already confirmed or not needed → start import.
+    // The card is already saved or the subscription is active, so the import can start.
     submitImport(emailValue);
   }
 
@@ -191,7 +191,7 @@ export function NumberImportDialog({
     startTransition(async () => {
       const result = manualImport
         ? await requestFrenchNumberImportAction(phone, emailValue)
-        : await startNumberImportWithPaymentAction(eligibilityToken!, emailValue);
+        : await startNumberImportAction(eligibilityToken!, emailValue);
       if (!result.ok) {
         setError(result.message);
         return;
@@ -209,7 +209,7 @@ export function NumberImportDialog({
 
   const stepLabels =
     totalSteps === 3
-      ? ["Your number", "Confirm", "Payment"]
+      ? ["Your number", "Confirm", "Card details"]
       : ["Your number", "Confirm"];
 
   const stripePromise =
@@ -378,14 +378,14 @@ export function NumberImportDialog({
               {manualImport
                 ? "Send porting request"
                 : needsBillingSetup
-                  ? "Continue to payment"
+                  ? "Continue to card setup"
                   : "Start import"}
             </Button>
           </div>
         </form>
       ) : null}
 
-      {/* Step 3 — Payment (only when needsBillingSetup) */}
+      {/* Step 3: save a card without starting billing. */}
       {step === 3 && !manualImport && stripeClientSecret && stripePromise ? (
         <Elements
           stripe={stripePromise}

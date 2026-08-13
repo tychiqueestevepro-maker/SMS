@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   customerBillingCapabilitiesFromSummary,
+  isSavedPaymentMethodStatus,
   unavailableCustomerBillingCapabilities,
 } from "./customer-capabilities";
 
@@ -18,6 +19,13 @@ function summary(overrides: Record<string, unknown> = {}) {
 }
 
 describe("customer billing capabilities", () => {
+  it("recognizes only the persisted saved payment method state", () => {
+    expect(isSavedPaymentMethodStatus("saved")).toBe(true);
+    expect(isSavedPaymentMethodStatus("setup_required")).toBe(false);
+    expect(isSavedPaymentMethodStatus("missing")).toBe(false);
+    expect(isSavedPaymentMethodStatus(null)).toBe(false);
+  });
+
   it("allows messaging below the safety cap for an authorized workspace", () => {
     expect(customerBillingCapabilitiesFromSummary(summary())).toMatchObject({
       canAcquireNumber: true,

@@ -8,6 +8,7 @@ export type NumberProductErrorCode =
   | "NUMBER_IMPORT_NOT_ELIGIBLE"
   | "NUMBER_IMPORT_UNAVAILABLE"
   | "NUMBER_SETUP_INVALID"
+  | "PAYMENT_METHOD_REQUIRED"
   | "CONNECTED_NUMBER_CANNOT_BE_REMOVED";
 
 const NUMBER_PRODUCT_ERRORS: Record<NumberProductErrorCode, string> = {
@@ -25,6 +26,8 @@ const NUMBER_PRODUCT_ERRORS: Record<NumberProductErrorCode, string> = {
     "Number importing is currently unavailable. Please try again later.",
   NUMBER_SETUP_INVALID:
     "Some business verification details need your attention.",
+  PAYMENT_METHOD_REQUIRED:
+    "Save a payment method before requesting a phone number.",
   CONNECTED_NUMBER_CANNOT_BE_REMOVED:
     "This connected number is managed from the Riink owner account and cannot be removed here.",
 };

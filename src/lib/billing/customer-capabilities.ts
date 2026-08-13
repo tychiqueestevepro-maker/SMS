@@ -30,6 +30,10 @@ const NUMBER_ACQUISITION_STATUSES = new Set([
   "cancellation_scheduled",
 ]);
 
+export function isSavedPaymentMethodStatus(value: unknown): boolean {
+  return value === "saved";
+}
+
 function nonNegativeInteger(value: unknown): number | null {
   const candidate =
     typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;

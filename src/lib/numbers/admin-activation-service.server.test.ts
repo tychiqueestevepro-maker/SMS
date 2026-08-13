@@ -52,6 +52,9 @@ describe("AdminNumberActivationService", () => {
       workspaceId: "workspace_1",
     });
     expect(ensureSubscription).toHaveBeenCalledWith("workspace_1");
+    expect(vi.mocked(ensureSubscription).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(repository.completeApprovedNumber).mock.invocationCallOrder[0],
+    );
     expect(repository.completeApprovedNumber).toHaveBeenCalledWith({
       activationId: "activation_1",
       adminUserId: "admin_1",

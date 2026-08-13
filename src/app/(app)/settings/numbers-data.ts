@@ -3,7 +3,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { NumberSettingsData } from "@/components/numbers/types";
-import { loadCustomerBillingCapabilities } from "@/lib/billing/customer-capabilities.server";
+import {
+  customerBillingCapabilitiesFromSummary,
+  isSavedPaymentMethodStatus,
+  unavailableCustomerBillingCapabilities,
+} from "@/lib/billing/customer-capabilities";
 import { toNumberClientDtos } from "@/lib/numbers/client";
 import type { InternalPhoneNumberRecord, NumberAdminState } from "@/lib/numbers/internal-types";
 import type { NumberImportStatus, NumberSource } from "@/lib/numbers/product-types";
@@ -67,6 +71,7 @@ export type NumberServerContext = {
   numberAcquisitionAllowed: boolean;
   ownerEmail: string | null;
   ownerUserId: string;
+  paymentMethodSaved: boolean;
   records: InternalPhoneNumberRecord[];
   supabase: SupabaseClient;
   workspaceId: string;
@@ -86,8 +91,8 @@ export async function loadNumberServerContext(): Promise<NumberServerContext | n
     .maybeSingle();
   if (!workspace) return null;
 
-  const [capabilities, { data: numberData }, importDetailsResponse] = await Promise.all([
-    loadCustomerBillingCapabilities(supabase),
+  const [billingSummaryResponse, { data: numberData }, importDetailsResponse] = await Promise.all([
+    supabase.rpc("get_billing_usage_summary"),
     supabase
       .from("phone_numbers")
       .select("id,phone_e164,status,number_source,country_code,import_status,activated_at,created_at,updated_at,deleted_at")
@@ -96,6 +101,17 @@ export async function loadNumberServerContext(): Promise<NumberServerContext | n
       .order("created_at"),
     supabase.rpc("get_my_phone_number_import_details"),
   ]);
+  const capabilities = billingSummaryResponse.error
+    ? unavailableCustomerBillingCapabilities
+    : customerBillingCapabilitiesFromSummary(billingSummaryResponse.data);
+  const billingSummaryRow = Array.isArray(billingSummaryResponse.data)
+    ? billingSummaryResponse.data[0]
+    : billingSummaryResponse.data;
+  const paymentMethodSaved = isSavedPaymentMethodStatus(
+    billingSummaryRow && typeof billingSummaryRow === "object"
+      ? (billingSummaryRow as Record<string, unknown>).payment_method_status
+      : null,
+  );
   const importDetails = new Map(
     importDetailRows(importDetailsResponse.data).map((detail) => [
       detail.phone_number_id,
@@ -129,6 +145,7 @@ export async function loadNumberServerContext(): Promise<NumberServerContext | n
     numberAcquisitionAllowed: capabilities.canAcquireNumber,
     ownerEmail: user.email ?? null,
     ownerUserId: user.id,
+    paymentMethodSaved,
     records,
     supabase,
     workspaceId: workspace.id as string,
@@ -166,14 +183,7 @@ export async function loadNumberSettingsData(): Promise<NumberSettingsData> {
   const importedNumberCount = context.records.filter(
     (record) => record.source === "imported" && record.deletedAt === null,
   ).length;
-  // needsBillingSetup: user has no saved payment method yet.
-  // We detect this via payment_method_status from the billing summary RPC.
-  const { data: billingSummaryData } = await context.supabase.rpc("get_billing_usage_summary");
-  const billingSummaryRow = Array.isArray(billingSummaryData) ? billingSummaryData[0] : billingSummaryData;
-  const paymentMethodStatus = billingSummaryRow && typeof billingSummaryRow === "object"
-    ? (billingSummaryRow as Record<string, unknown>).payment_method_status
-    : null;
-  const needsBillingSetup = paymentMethodStatus !== "saved" && paymentMethodStatus !== "ready" && paymentMethodStatus !== "attached";
+  const needsBillingSetup = !context.paymentMethodSaved;
   let billingPublishableKey: string | null = null;
   if (needsBillingSetup) {
     try { billingPublishableKey = billingPublishableKeyFromEnvironment(); } catch { /* not configured */ }
