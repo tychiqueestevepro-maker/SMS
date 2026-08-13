@@ -2,6 +2,8 @@ import "server-only";
 
 import { BillingService } from "@/lib/billing/service";
 import { SupabaseBillingRepository } from "@/lib/billing/supabase-repository.server";
+import { AutomaticNumberActivationService } from "@/lib/numbers/automatic-activation-service.server";
+import { SupabaseAutomaticNumberActivationRepository } from "@/lib/numbers/supabase-automatic-activation-repository.server";
 import { stripeBillingGatewayFromEnvironment } from "@/lib/providers/stripe/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -22,8 +24,8 @@ export function billingPublishableKeyFromEnvironment(): string {
 }
 
 /**
- * Number onboarding uses this boundary before transitioning an approved first
- * number to Ready. The transition must happen only after this promise resolves.
+ * Number onboarding uses this boundary after the provider purchase is durable
+ * and before transitioning the first number to Ready.
  */
 export async function ensureWorkspaceSubscriptionActive(workspaceId: string) {
   const priceId = process.env.STRIPE_BASE_PRICE_ID?.trim();
@@ -32,6 +34,16 @@ export async function ensureWorkspaceSubscriptionActive(workspaceId: string) {
     priceId,
     workspaceId,
   });
+}
+
+let automaticNumberActivationService: AutomaticNumberActivationService | undefined;
+
+export function automaticNumberActivationServiceFromEnvironment(): AutomaticNumberActivationService {
+  automaticNumberActivationService ??= new AutomaticNumberActivationService(
+    new SupabaseAutomaticNumberActivationRepository(createServiceRoleClient()),
+    ensureWorkspaceSubscriptionActive,
+  );
+  return automaticNumberActivationService;
 }
 
 export { billingSubscriptionServiceFromEnvironment } from "./billing-webhook.server";

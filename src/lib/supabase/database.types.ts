@@ -873,6 +873,52 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_automatic_number_activation: {
+        Args: {
+          p_number_id: string
+          p_requested_at: string
+          p_workspace_id: string
+        }
+        Returns: {
+          activation_id: string
+          disposition: string
+          number_id: string
+          workspace_id: string
+        }[]
+      }
+      complete_automatic_number_activation: {
+        Args: {
+          p_activation_id: string
+          p_completed_at: string
+          p_number_id: string
+          p_period_end: string
+          p_period_start: string
+          p_subscription_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          activated: boolean
+          activation_id: string
+          number_id: string
+          product_status: string
+          workspace_id: string
+        }[]
+      }
+      fail_automatic_number_activation: {
+        Args: {
+          p_activation_id: string
+          p_failed_at: string
+          p_failure_code: string
+          p_number_id: string
+          p_workspace_id: string
+        }
+        Returns: {
+          activation_id: string
+          number_id: string
+          recorded: boolean
+          workspace_id: string
+        }[]
+      }
       admin_claim_approved_number_activation: {
         Args: {
           p_admin_user_id: string

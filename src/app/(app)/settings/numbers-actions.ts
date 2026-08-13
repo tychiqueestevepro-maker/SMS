@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { loadNumberServerContext } from "@/app/(app)/settings/numbers-data";
 import type { NumberActionResult } from "@/components/numbers/types";
+import { ProductBillingError } from "@/lib/billing/gateway";
 import { ProductMessagingError } from "@/lib/messaging/errors";
 import { assertUsAreaCode } from "@/lib/numbers/area-code";
 import { parseAndNormalizePhoneNumber } from "@/lib/contacts/phone";
@@ -22,9 +23,14 @@ import {
   numberProvisioningServiceFromEnvironment,
   numberImportServiceFromEnvironment,
 } from "@/lib/runtime/messaging.server";
+import { automaticNumberActivationServiceFromEnvironment } from "@/lib/runtime/billing.server";
 
 function failure(error: unknown): NumberActionResult {
-  if (error instanceof NumberProductError || error instanceof ProductMessagingError) {
+  if (
+    error instanceof NumberProductError ||
+    error instanceof ProductMessagingError ||
+    error instanceof ProductBillingError
+  ) {
     return { code: error.code, message: error.message, ok: false };
   }
   const safe = new ProductMessagingError("PHONE_NUMBER_OPERATION_FAILED");
@@ -124,15 +130,19 @@ export async function startNumberOnboardingAction(
     const capacity = evaluateNumberCapacity(context.records, { maxPhoneNumbers: context.maxPhoneNumbers });
     if (!capacity.allowed) throw new NumberProductError("PHONE_NUMBER_LIMIT_REACHED");
 
-    await numberProvisioningServiceFromEnvironment().startNumberOnboarding({
+    const onboarding = await numberProvisioningServiceFromEnvironment().startNumberOnboarding({
       businessVerification: verification.value,
       selectionToken: selectionId,
+      workspaceId: context.workspaceId,
+    });
+    await automaticNumberActivationServiceFromEnvironment().activate({
+      numberId: onboarding.phoneNumberId,
       workspaceId: context.workspaceId,
     });
 
     revalidatePath("/settings");
     revalidatePath("/campaigns/new");
-    return { message: "Number setup started.", ok: true };
+    return { message: "Your number is ready to use.", ok: true };
   } catch (error) {
     return failure(error);
   }

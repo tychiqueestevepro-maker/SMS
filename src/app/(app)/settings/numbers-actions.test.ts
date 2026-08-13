@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  ensureSubscription: vi.fn(),
+  activateNumber: vi.fn(),
   loadContext: vi.fn(),
   startOnboarding: vi.fn(),
 }));
@@ -13,7 +13,9 @@ vi.mock("@/app/(app)/settings/numbers-data", () => ({
   loadNumberServerContext: mocks.loadContext,
 }));
 vi.mock("@/lib/runtime/billing.server", () => ({
-  ensureWorkspaceSubscriptionActive: mocks.ensureSubscription,
+  automaticNumberActivationServiceFromEnvironment: () => ({
+    activate: mocks.activateNumber,
+  }),
 }));
 vi.mock("@/lib/runtime/messaging.server", () => ({
   configuredNumberServiceFromEnvironment: vi.fn(),
@@ -67,6 +69,12 @@ describe("number onboarding billing timing", () => {
       phoneNumberId: "number-1",
       status: "pending",
     });
+    mocks.activateNumber.mockResolvedValue({
+      alreadyReady: false,
+      numberId: "number-1",
+      subscriptionId: "sub-1",
+      workspaceId: "workspace-1",
+    });
   });
 
   it("requires a saved card before reserving a number", async () => {
@@ -77,17 +85,23 @@ describe("number onboarding billing timing", () => {
       ok: false,
     });
     expect(mocks.startOnboarding).not.toHaveBeenCalled();
-    expect(mocks.ensureSubscription).not.toHaveBeenCalled();
+    expect(mocks.activateNumber).not.toHaveBeenCalled();
   });
 
-  it("starts pending setup without activating or charging the subscription", async () => {
+  it("automatically activates billing only after the provider purchase completes", async () => {
     mocks.loadContext.mockResolvedValue(context(true));
 
     await expect(startNumberOnboardingAction("selection-1", BUSINESS)).resolves.toMatchObject({
-      message: "Number setup started.",
+      message: "Your number is ready to use.",
       ok: true,
     });
     expect(mocks.startOnboarding).toHaveBeenCalledOnce();
-    expect(mocks.ensureSubscription).not.toHaveBeenCalled();
+    expect(mocks.activateNumber).toHaveBeenCalledWith({
+      numberId: "number-1",
+      workspaceId: "workspace-1",
+    });
+    expect(mocks.startOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.activateNumber.mock.invocationCallOrder[0]!,
+    );
   });
 });
