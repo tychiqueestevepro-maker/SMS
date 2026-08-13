@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { createBillingSetupSession, confirmPaymentSetupAction } from "@/app/(app)/settings/billing-actions";
 import {
   checkNumberImportEligibilityAction,
+  requestFrenchNumberImportAction,
   startNumberImportWithPaymentAction,
 } from "@/app/(app)/settings/numbers-actions";
 import { Modal } from "@/components/contacts/modal";
@@ -109,22 +110,24 @@ export function NumberImportDialog({
   needsBillingSetup,
   billingPublishableKey,
 }: NumberImportDialogProps) {
-  const totalSteps = needsBillingSetup ? 3 : 2;
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [country, setCountry] = useState<"US" | "CA" | "FR">("US");
   const [phone, setPhone] = useState("");
-  const [country, setCountry] = useState<"US" | "CA">("US");
   const [eligibilityToken, setEligibilityToken] = useState<string | null>(null);
+  const [manualImport, setManualImport] = useState(false);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const totalSteps = country === "FR" ? 2 : needsBillingSetup ? 3 : 2;
 
   function reset() {
     setStep(1);
-    setPhone("");
     setCountry("US");
+    setPhone("");
     setEligibilityToken(null);
+    setManualImport(false);
     setEmail("");
     setError(null);
     setStripeClientSecret(null);
@@ -139,7 +142,7 @@ export function NumberImportDialog({
 
   function checkEligibility(formData: FormData) {
     const phoneValue = String(formData.get("phone") ?? "");
-    const countryValue = String(formData.get("country") ?? "US") as "US" | "CA";
+    const countryValue = String(formData.get("country") ?? "US") as "US" | "CA" | "FR";
     setError(null);
     startTransition(async () => {
       const result = await checkNumberImportEligibilityAction(phoneValue, countryValue);
@@ -147,13 +150,14 @@ export function NumberImportDialog({
         setError(result.message);
         return;
       }
-      if (!result.eligibilityToken) {
+      if (!result.eligibilityToken && !result.manualImport) {
         setError("This number is not eligible for import.");
         return;
       }
-      setPhone(result.phoneNumber ?? phoneValue);
       setCountry(countryValue);
-      setEligibilityToken(result.eligibilityToken);
+      setPhone(result.phoneNumber ?? phoneValue);
+      setEligibilityToken(result.eligibilityToken ?? null);
+      setManualImport(Boolean(result.manualImport));
       setStep(2);
     });
   }
@@ -162,7 +166,7 @@ export function NumberImportDialog({
     const emailValue = String(formData.get("email") ?? "");
     setError(null);
 
-    if (needsBillingSetup && !paymentConfirmed) {
+    if (!manualImport && needsBillingSetup && !paymentConfirmed) {
       // Fetch SetupIntent before going to payment step.
       setEmail(emailValue);
       startTransition(async () => {
@@ -182,10 +186,12 @@ export function NumberImportDialog({
   }
 
   function submitImport(emailValue: string) {
-    if (!eligibilityToken) return;
+    if (!manualImport && !eligibilityToken) return;
     setError(null);
     startTransition(async () => {
-      const result = await startNumberImportWithPaymentAction(eligibilityToken, emailValue);
+      const result = manualImport
+        ? await requestFrenchNumberImportAction(phone, emailValue)
+        : await startNumberImportWithPaymentAction(eligibilityToken!, emailValue);
       if (!result.ok) {
         setError(result.message);
         return;
@@ -263,9 +269,18 @@ export function NumberImportDialog({
             <div className="space-y-4">
               <label>
                 <span className="mb-1.5 block text-sm font-medium text-[#344139]">Country</span>
-                <select className={baseInputClass} defaultValue="US" name="country">
+                <select
+                  className={baseInputClass}
+                  name="country"
+                  onChange={(event) => {
+                    setCountry(event.target.value as "US" | "CA" | "FR");
+                    setError(null);
+                  }}
+                  value={country}
+                >
                   <option value="US">United States (+1)</option>
                   <option value="CA">Canada (+1)</option>
+                  <option value="FR">France (+33)</option>
                 </select>
               </label>
               <label>
@@ -276,7 +291,7 @@ export function NumberImportDialog({
                   defaultValue={phone}
                   inputMode="tel"
                   name="phone"
-                  placeholder="(512) 555-0192"
+                  placeholder={country === "FR" ? "01 23 45 67 89" : "(512) 555-0192"}
                   required
                   type="tel"
                 />
@@ -290,8 +305,9 @@ export function NumberImportDialog({
             ) : null}
 
             <div className="mt-6 rounded-xl border border-[#dce6df] bg-[#f4f8f5] px-4 py-3 text-xs leading-5 text-[#5f6c64]">
-              Number import (port-in) can take 2–5 business days and requires your current carrier to
-              release the number. An automated call will verify ownership.
+              {country === "FR"
+                ? "French porting is reviewed manually and can take several weeks. Keep your current carrier service active until the transfer is complete."
+                : "Number import can take 2 to 5 business days and requires your current carrier to release the number. An automated call will verify ownership."}
             </div>
           </div>
           <div className="flex justify-end gap-2 border-t border-[#e7ebe8] bg-[#fafbfa] px-5 py-4 sm:px-6">
@@ -318,7 +334,7 @@ export function NumberImportDialog({
                 <p className="text-sm font-semibold text-[#26342b]">{phone}</p>
                 <p className="mt-0.5 text-xs text-[#5f6c64]">
                   <Check aria-hidden="true" className="mr-1 inline text-[#246b4a]" size={11} />
-                  Eligible for import
+                  {manualImport ? "Ready for manual porting review" : "Eligible for import"}
                 </p>
               </div>
               <Button className="ml-auto" onClick={() => setStep(1)} size="sm" type="button" variant="ghost">
@@ -340,7 +356,9 @@ export function NumberImportDialog({
                 type="email"
               />
               <p className="mt-1.5 text-xs text-[#738078]">
-                Our messaging provider may contact this email for ownership verification documents.
+                {manualImport
+                  ? "We will use this email to request the SIRET, RIO, carrier details, address and compliance documents."
+                  : "Our messaging provider may contact this email for ownership verification documents."}
               </p>
             </label>
 
@@ -357,14 +375,18 @@ export function NumberImportDialog({
             </Button>
             <Button disabled={isPending} type="submit">
               {isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={15} /> : null}
-              {needsBillingSetup ? "Continue to payment" : "Start import"}
+              {manualImport
+                ? "Send porting request"
+                : needsBillingSetup
+                  ? "Continue to payment"
+                  : "Start import"}
             </Button>
           </div>
         </form>
       ) : null}
 
       {/* Step 3 — Payment (only when needsBillingSetup) */}
-      {step === 3 && stripeClientSecret && stripePromise ? (
+      {step === 3 && !manualImport && stripeClientSecret && stripePromise ? (
         <Elements
           stripe={stripePromise}
           options={{

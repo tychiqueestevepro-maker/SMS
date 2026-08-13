@@ -18,6 +18,7 @@ export type ProductDeliveryStatus =
 export type PhoneNumberStatus = "pending" | "ready";
 
 export type ExistingNumberCountryCode = "US" | "CA";
+export type PurchasableNumberCountryCode = "US" | "FR";
 
 /**
  * Provider-neutral progress for an existing-number onboarding operation.
@@ -127,7 +128,7 @@ export interface SendMessageResult {
 
 export interface SearchNumbersInput {
   workspaceId: string;
-  countryCode: "US";
+  countryCode: PurchasableNumberCountryCode;
   areaCode?: string;
   limit?: number;
 }

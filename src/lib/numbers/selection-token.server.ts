@@ -9,7 +9,8 @@ const TOKEN_ALGORITHM = "aes-256-gcm";
 const TOKEN_AAD = Buffer.from("riink:number-selection:v1", "utf8");
 
 type SelectionPayload = {
-  areaCode: string;
+  areaCode: string | null;
+  countryCode: "US" | "FR";
   expiresAt: number;
   nonce: string;
   phoneNumber: string;
@@ -20,8 +21,14 @@ type SelectionPayload = {
 
 export type VerifiedNumberSelection = Pick<
   SelectionPayload,
-  "areaCode" | "nonce" | "phoneNumber" | "providerNumberId" | "workspaceId"
+  "areaCode" | "countryCode" | "nonce" | "phoneNumber" | "providerNumberId" | "workspaceId"
 >;
+
+function validPhoneNumber(phoneNumber: string, countryCode: "US" | "FR"): boolean {
+  return countryCode === "US"
+    ? /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(phoneNumber)
+    : /^\+33[1-79]\d{8}$/.test(phoneNumber);
+}
 
 function signingKey(base64Key: string): Buffer {
   const key = Buffer.from(base64Key, "base64");
@@ -49,7 +56,8 @@ export class NumberSelectionTokenSigner {
 
   issue(
     selection: {
-      areaCode: string;
+      areaCode: string | null;
+      countryCode: "US" | "FR";
       phoneNumber: string;
       providerNumberId: string;
       workspaceId: string;
@@ -61,8 +69,10 @@ export class NumberSelectionTokenSigner {
       throw new Error("Number selection TTL is invalid.");
     }
     if (
-      !/^\d{3}$/.test(selection.areaCode) ||
-      !/^\+1[2-9]\d{9}$/.test(selection.phoneNumber) ||
+      (selection.countryCode === "US"
+        ? !/^\d{3}$/.test(selection.areaCode ?? "")
+        : selection.countryCode !== "FR" || selection.areaCode !== null) ||
+      !validPhoneNumber(selection.phoneNumber, selection.countryCode) ||
       !selection.providerNumberId.trim() ||
       selection.providerNumberId.length > 255 ||
       !selection.workspaceId
@@ -73,6 +83,7 @@ export class NumberSelectionTokenSigner {
     const now = options.now ?? new Date();
     const payload: SelectionPayload = {
       areaCode: selection.areaCode,
+      countryCode: selection.countryCode,
       expiresAt: Math.floor(now.getTime() / 1000) + ttlSeconds,
       nonce: randomBytes(12).toString("base64url"),
       phoneNumber: selection.phoneNumber,
@@ -132,13 +143,20 @@ export class NumberSelectionTokenSigner {
         typeof payload.providerNumberId !== "string" ||
         !payload.providerNumberId.trim() ||
         payload.providerNumberId.length > 255 ||
-        !/^\d{3}$/.test(payload.areaCode ?? "") ||
-        !/^\+1[2-9]\d{9}$/.test(payload.phoneNumber ?? "")
+        (payload.countryCode === "US"
+          ? !/^\d{3}$/.test(payload.areaCode ?? "")
+          : payload.countryCode !== "FR" || payload.areaCode !== null) ||
+        typeof payload.phoneNumber !== "string" ||
+        !validPhoneNumber(
+          payload.phoneNumber,
+          payload.countryCode as "US" | "FR",
+        )
       ) {
         invalidSelection();
       }
       return {
         areaCode: payload.areaCode,
+        countryCode: payload.countryCode,
         nonce: payload.nonce,
         phoneNumber: payload.phoneNumber,
         providerNumberId: payload.providerNumberId,

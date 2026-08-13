@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Calendar,
   Clock,
-  MessageSquare,
   Phone,
   Sliders,
   Users,

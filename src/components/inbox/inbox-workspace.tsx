@@ -1,10 +1,10 @@
 "use client";
 
-import { ArrowLeft, Check, Info, LayoutTemplate, MessageCircle, MoreVertical, Search, Tag, User, X } from "lucide-react";
+import { ArrowLeft, Check, Info, LayoutTemplate, MessageCircle, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition, useEffect } from "react";
 
-import { moveInboxContactStageAction, deleteInboxConversationAction, markConversationReadAction } from "@/app/(app)/inbox/actions";
+import { deleteInboxConversationAction, markConversationReadAction } from "@/app/(app)/inbox/actions";
 import { ManualComposer } from "@/components/inbox/manual-composer";
 import { InboxRealtimeRefresh } from "@/components/inbox/realtime-refresh";
 import type { InboxActionResult, InboxConversationViewDto, InboxPageData } from "@/components/inbox/types";
@@ -87,8 +87,6 @@ function ConversationList({
   setSort: (val: "newest" | "oldest") => void;
 }) {
   const countAll = conversations.length;
-  const countReplied = conversations.filter(c => c.sequenceStoppedOnReply).length;
-  const countOptedOut = conversations.filter(c => c.isSuppressed).length;
   const countUnread = conversations.filter(c => c.hasUnreadMessages).length;
 
   return (
@@ -215,7 +213,7 @@ function FilterTab({ active, label, count, onClick }: { active: boolean; label: 
   );
 }
 
-export function InboxWorkspace({ conversations, effectiveCredits, messagingAvailable, safetyCapCredits, safetyCapReached, stages, workspaceId }: InboxPageData) {
+export function InboxWorkspace({ conversations, effectiveCredits, messagingAvailable, safetyCapCredits, safetyCapReached, workspaceId }: InboxPageData) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(conversations[0]?.id ?? null);
   const [search, setSearch] = useState("");
@@ -223,7 +221,7 @@ export function InboxWorkspace({ conversations, effectiveCredits, messagingAvail
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
   const [notice, setNotice] = useState<InboxActionResult | null>(null);
-  const [isChangingStage, startChangingStage] = useTransition();
+  const [, startChangingStage] = useTransition();
   const threadEndRef = useRef<HTMLDivElement>(null);
   
   const filtered = useMemo(() => {
@@ -276,15 +274,6 @@ export function InboxWorkspace({ conversations, effectiveCredits, messagingAvail
     }
     setMobileThreadOpen(true);
     setNotice(null);
-  }
-
-  function changeStage(stageId: string) {
-    if (!selected || selected.deletedContact) return;
-    startChangingStage(async () => {
-      const result = await moveInboxContactStageAction(selected.contactId, stageId);
-      setNotice(result);
-      if (result.ok) router.refresh();
-    });
   }
 
   if (conversations.length === 0) {

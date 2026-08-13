@@ -31,11 +31,9 @@ import { Modal } from "@/components/contacts/modal";
 import { StageManagerDialog } from "@/components/contacts/stage-manager-dialog";
 import type { ContactActionResult, ContactsWorkspaceData } from "@/components/contacts/types";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonStyles } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { AvatarInitials } from "@/components/ui/avatar-initials";
-import type { ContactFilter, ContactListItemDto, ContactSearchSource, ContactView } from "@/lib/contacts/types";
+import type { ContactFilter, ContactListItemDto, ContactSearchSource } from "@/lib/contacts/types";
 
 const filters: { label: string; value: ContactFilter }[] = [
   { label: "All", value: "all" },

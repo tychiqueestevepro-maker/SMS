@@ -8,6 +8,7 @@ import {
 } from "./business";
 
 const VALID_INPUT: BusinessVerificationInput = {
+  countryCode: "US",
   legalBusinessName: " Riink, Inc. ",
   ein: "12-3456789",
   businessAddress: {
@@ -63,6 +64,34 @@ describe("business verification", () => {
           "Hi Ada, this is Riink.",
           "Following up on your request.",
         ],
+      },
+    });
+  });
+
+  it("validates French registration and address fields", () => {
+    const validation = validateBusinessVerification({
+      ...VALID_INPUT,
+      countryCode: "FR",
+      ein: "123 456 789 00012",
+      businessAddress: {
+        ...VALID_INPUT.businessAddress,
+        city: "Paris",
+        state: "Ile de France",
+        postalCode: "75001",
+      },
+      phone: "06 12 34 56 78",
+    });
+
+    expect(validation).toMatchObject({
+      valid: true,
+      value: {
+        ein: "12345678900012",
+        businessAddress: {
+          country: "FR",
+          state: "Ile de France",
+          postalCode: "75001",
+        },
+        phoneE164: "+33612345678",
       },
     });
   });

@@ -15,6 +15,7 @@ describe("NumberSelectionTokenSigner", () => {
     const token = signer.issue(
       {
         areaCode: "512",
+        countryCode: "US",
         phoneNumber: "+15125550192",
         providerNumberId: "candidate-1",
         workspaceId: "workspace-1",
@@ -28,10 +29,31 @@ describe("NumberSelectionTokenSigner", () => {
     ).not.toContain("candidate-1");
     expect(signer.verify(token, "workspace-1", new Date("2026-08-10T12:04:59.000Z"))).toEqual({
       areaCode: "512",
+      countryCode: "US",
       nonce: expect.any(String),
       phoneNumber: "+15125550192",
       providerNumberId: "candidate-1",
       workspaceId: "workspace-1",
+    });
+  });
+
+  it("issues selections for French SMS numbers without a US area code", () => {
+    const signer = new NumberSelectionTokenSigner(randomBytes(32).toString("base64"));
+    const token = signer.issue(
+      {
+        areaCode: null,
+        countryCode: "FR",
+        phoneNumber: "+33939031234",
+        providerNumberId: "+33939031234",
+        workspaceId: "workspace-1",
+      },
+      { now: NOW },
+    );
+
+    expect(signer.verify(token, "workspace-1", NOW)).toMatchObject({
+      areaCode: null,
+      countryCode: "FR",
+      phoneNumber: "+33939031234",
     });
   });
 
@@ -40,6 +62,7 @@ describe("NumberSelectionTokenSigner", () => {
     const token = signer.issue(
       {
         areaCode: "512",
+        countryCode: "US",
         phoneNumber: "+15125550192",
         providerNumberId: "candidate-1",
         workspaceId: "workspace-1",
@@ -57,6 +80,7 @@ describe("NumberSelectionTokenSigner", () => {
     const token = signer.issue(
       {
         areaCode: "512",
+        countryCode: "US",
         phoneNumber: "+15125550192",
         providerNumberId: "candidate-1",
         workspaceId: "workspace-1",

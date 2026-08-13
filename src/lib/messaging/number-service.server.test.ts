@@ -146,6 +146,7 @@ function createHarness(input: {
   const token = signer.issue(
     {
       areaCode: "512",
+      countryCode: "US",
       phoneNumber: "+15125550192",
       providerNumberId: "available-1",
       workspaceId: "workspace-1",
@@ -168,6 +169,7 @@ describe("NumberProvisioningService", () => {
 
     const candidates = await harness.service.searchNumbers({
       areaCode: "512",
+      countryCode: "US",
       requestId: "11111111-1111-4111-8111-111111111111",
       workspaceId: "workspace-1",
     });
@@ -215,12 +217,49 @@ describe("NumberProvisioningService", () => {
     await expect(
       harness.service.searchNumbers({
         areaCode: "512",
+        countryCode: "US",
         requestId: "22222222-2222-4222-8222-222222222222",
         workspaceId: "workspace-1",
       }),
     ).rejects.toMatchObject({ code: "PHONE_NUMBER_OPERATION_FAILED" });
     expect(harness.setupProvider.createWorkspaceAccount).not.toHaveBeenCalled();
     expect(harness.provider.searchNumbers).not.toHaveBeenCalled();
+  });
+
+  it("searches and signs French SMS numbers without an area code", async () => {
+    const provider = smsProviderMock();
+    vi.mocked(provider.searchNumbers).mockResolvedValue([
+      {
+        providerNumberId: "+33939031234",
+        phoneNumber: "+33939031234",
+        locality: "France",
+        region: null,
+        supportsSms: true,
+      },
+    ]);
+    const harness = createHarness({ provider });
+
+    const candidates = await harness.service.searchNumbers({
+      countryCode: "FR",
+      requestId: "44444444-4444-4444-8444-444444444444",
+      workspaceId: "workspace-1",
+    });
+
+    expect(provider.searchNumbers).toHaveBeenCalledWith({
+      areaCode: undefined,
+      countryCode: "FR",
+      limit: undefined,
+      workspaceId: "workspace-1",
+    });
+    expect(candidates[0]).toMatchObject({
+      areaCode: null,
+      countryCode: "FR",
+      phoneNumber: "+33939031234",
+    });
+    expect(harness.signer.verify(candidates[0]!.selectionId, "workspace-1", NOW)).toMatchObject({
+      countryCode: "FR",
+      phoneNumber: "+33939031234",
+    });
   });
 
   it("does not initialize a workspace or search when the request is throttled", async () => {
@@ -234,6 +273,7 @@ describe("NumberProvisioningService", () => {
 
     await expect(harness.service.searchNumbers({
       areaCode: "512",
+      countryCode: "US",
       requestId: "33333333-3333-4333-8333-333333333333",
       workspaceId: "workspace-1",
     })).rejects.toMatchObject({ code: "PHONE_NUMBER_OPERATION_FAILED" });

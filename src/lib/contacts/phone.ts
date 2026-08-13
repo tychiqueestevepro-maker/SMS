@@ -50,7 +50,7 @@ export function parseAndNormalizePhoneNumber(input: string): { phoneE164: string
 
       return { phoneE164: e164, countryCode };
     }
-  } catch (err) {
+  } catch {
     // libphonenumber-js throws if it cannot parse
   }
 

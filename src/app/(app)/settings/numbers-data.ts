@@ -7,6 +7,10 @@ import { loadCustomerBillingCapabilities } from "@/lib/billing/customer-capabili
 import { toNumberClientDtos } from "@/lib/numbers/client";
 import type { InternalPhoneNumberRecord, NumberAdminState } from "@/lib/numbers/internal-types";
 import type { NumberImportStatus, NumberSource } from "@/lib/numbers/product-types";
+import {
+  canConnectConfiguredExistingNumber,
+  CONFIGURED_EXISTING_NUMBER,
+} from "@/lib/numbers/configured-existing-number.server";
 import { evaluateNumberCapacity } from "@/lib/numbers/policy";
 import { numberImportsConfigured } from "@/lib/runtime/messaging.server";
 import { billingPublishableKeyFromEnvironment } from "@/lib/runtime/billing.server";
@@ -62,6 +66,7 @@ export type NumberServerContext = {
   maxPhoneNumbers: number;
   numberAcquisitionAllowed: boolean;
   ownerEmail: string | null;
+  ownerUserId: string;
   records: InternalPhoneNumberRecord[];
   supabase: SupabaseClient;
   workspaceId: string;
@@ -123,6 +128,7 @@ export async function loadNumberServerContext(): Promise<NumberServerContext | n
     maxPhoneNumbers: capabilities.maxPhoneNumbers,
     numberAcquisitionAllowed: capabilities.canAcquireNumber,
     ownerEmail: user.email ?? null,
+    ownerUserId: user.id,
     records,
     supabase,
     workspaceId: workspace.id as string,
@@ -134,8 +140,10 @@ export async function loadNumberSettingsData(): Promise<NumberSettingsData> {
   if (!context) {
     return {
       canImportNumber: false,
+      canConnectExistingNumber: false,
       canObtainIncludedNumber: false,
       importedNumberCount: 0,
+      existingNumberToConnect: null,
       importNumberUnavailableReason: "billing",
       includedNumberCount: 0,
       includedNumberUnavailableReason: "billing",
@@ -147,6 +155,13 @@ export async function loadNumberSettingsData(): Promise<NumberSettingsData> {
     };
   }
   const capacity = evaluateNumberCapacity(context.records, { maxPhoneNumbers: context.maxPhoneNumbers });
+  const configuredConnectionAllowed = canConnectConfiguredExistingNumber({
+    email: context.ownerEmail,
+    userId: context.ownerUserId,
+  });
+  const configuredNumberConnected = context.records.some(
+    (record) => record.phoneNumber === CONFIGURED_EXISTING_NUMBER.phoneNumber,
+  );
   const importsConfigured = numberImportsConfigured();
   const importedNumberCount = context.records.filter(
     (record) => record.source === "imported" && record.deletedAt === null,
@@ -166,8 +181,16 @@ export async function loadNumberSettingsData(): Promise<NumberSettingsData> {
   return {
     // Always allow — payment happens inside the dialog if needed.
     canImportNumber: importsConfigured,
+    canConnectExistingNumber:
+      configuredConnectionAllowed &&
+      !configuredNumberConnected &&
+      capacity.allowed &&
+      context.numberAcquisitionAllowed,
     canObtainIncludedNumber: true,
     importedNumberCount,
+    existingNumberToConnect: configuredConnectionAllowed
+      ? CONFIGURED_EXISTING_NUMBER.phoneNumber
+      : null,
     importNumberUnavailableReason: !importsConfigured ? "configuration" : null,
     includedNumberCount: capacity.currentNumberCount,
     includedNumberUnavailableReason: capacity.allowed ? null : "limit",

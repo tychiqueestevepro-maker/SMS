@@ -15,8 +15,7 @@ import type {
 const MAX_PARAMETERS = 256;
 const MAX_INBOUND_BODY_CHARACTERS = 1_600;
 const SMS_MESSAGE_ID = /^SM[a-f\d]{32}$/i;
-// Riink V1 contact and number storage is intentionally US/NANP-only.
-const US_E164 = /^\+1[2-9]\d{2}[2-9]\d{6}$/;
+const SUPPORTED_E164 = /^(?:\+1[2-9]\d{2}[2-9]\d{6}|\+33[1-79]\d{8})$/;
 
 function formContentType(value: string | null): boolean {
   return value?.split(";", 1)[0]?.trim().toLowerCase() ===
@@ -128,8 +127,8 @@ function inboundEvent(
   if (
     !from ||
     !to ||
-    !US_E164.test(from) ||
-    !US_E164.test(to) ||
+    !SUPPORTED_E164.test(from) ||
+    !SUPPORTED_E164.test(to) ||
     !Object.prototype.hasOwnProperty.call(parameters, "Body") ||
     parameters.Body!.length > MAX_INBOUND_BODY_CHARACTERS
   ) {

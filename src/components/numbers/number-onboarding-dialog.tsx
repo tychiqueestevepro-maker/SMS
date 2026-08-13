@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, CreditCard, LoaderCircle, MapPin, Search } from "lucide-react";
+import { ArrowLeft, Check, LoaderCircle, MapPin, Search } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
 
 import {
@@ -38,7 +38,11 @@ const baseInputClass =
 
 function formatPhone(phone: string) {
   const match = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(phone);
-  return match ? `(${match[1]}) ${match[2]}-${match[3]}` : phone;
+  if (match) return `(${match[1]}) ${match[2]}-${match[3]}`;
+  const french = /^\+33(\d)(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(phone);
+  return french
+    ? `0${french[1]} ${french[2]} ${french[3]} ${french[4]} ${french[5]}`
+    : phone;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +134,7 @@ export function NumberOnboardingDialog({
   // Steps: 1=area code, 2=pick number, 3=business, 4=payment (conditional)
   const totalSteps = needsBillingSetup ? 4 : 3;
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [countryCode, setCountryCode] = useState<"US" | "FR">("US");
   const [areaCode, setAreaCode] = useState("");
   const [candidates, setCandidates] = useState<NumberSearchCandidateDto[]>([]);
   const [selected, setSelected] = useState<NumberSearchCandidateDto | null>(null);
@@ -144,6 +149,7 @@ export function NumberOnboardingDialog({
 
   function reset() {
     setStep(1);
+    setCountryCode("US");
     setAreaCode("");
     setCandidates([]);
     setSelected(null);
@@ -164,7 +170,11 @@ export function NumberOnboardingDialog({
     const value = String(formData.get("areaCode") ?? "");
     setError(null);
     startTransition(async () => {
-      const result = await searchAvailableNumbersAction(value, crypto.randomUUID());
+      const result = await searchAvailableNumbersAction(
+        countryCode,
+        value,
+        crypto.randomUUID(),
+      );
       if (!result.ok) {
         setError(result.message);
         return;
@@ -178,6 +188,7 @@ export function NumberOnboardingDialog({
   function submitBusiness(formData: FormData) {
     if (!selected) return;
     const business: BusinessVerificationInput = {
+      countryCode,
       businessAddress: {
         city: String(formData.get("city") ?? ""),
         line1: String(formData.get("line1") ?? ""),
@@ -264,8 +275,8 @@ export function NumberOnboardingDialog({
 
   const stepLabels =
     totalSteps === 4
-      ? ["Area code", "Phone number", "Business details", "Payment"]
-      : ["Area code", "Phone number", "Business details"];
+      ? ["Location", "Phone number", "Business details", "Payment"]
+      : ["Location", "Phone number", "Business details"];
 
   const stripePromise =
     needsBillingSetup && billingPublishableKey
@@ -322,10 +333,23 @@ export function NumberOnboardingDialog({
               <span className="mx-auto grid size-12 place-items-center rounded-xl bg-[#eaf3ed] text-[#246b4a]">
                 <MapPin aria-hidden="true" size={20} />
               </span>
-              <h3 className="mt-5 text-lg font-semibold text-[#26342b]">Choose an area code</h3>
+              <h3 className="mt-5 text-lg font-semibold text-[#26342b]">Choose a country</h3>
               <p className="mt-2 text-sm leading-6 text-[#68736c]">
-                We&apos;ll find available US phone numbers in that area.
+                Search for an SMS number in the United States or France.
               </p>
+              <label className="mx-auto mt-6 block max-w-xs text-left">
+                <span className="mb-1.5 block text-sm font-medium text-[#344139]">Country</span>
+                <select
+                  className={`${baseInputClass} border-[#dbe2dd] focus:border-[#2e7d57] focus:ring-[#d8ebe0]`}
+                  name="countryCode"
+                  onChange={(event) => setCountryCode(event.target.value as "US" | "FR")}
+                  value={countryCode}
+                >
+                  <option value="US">United States (+1)</option>
+                  <option value="FR">France (+33)</option>
+                </select>
+              </label>
+              {countryCode === "US" ? (
               <div className="relative mx-auto mt-6 max-w-xs">
                 <Search
                   aria-hidden="true"
@@ -344,6 +368,12 @@ export function NumberOnboardingDialog({
                   required
                 />
               </div>
+              ) : (
+                <div className="mx-auto mt-6 max-w-xs rounded-xl border border-[#dce6df] bg-[#f4f8f5] px-4 py-3 text-left text-xs leading-5 text-[#5f6c64]">
+                  We&apos;ll show French numbers enabled for SMS. Activation may require regulatory
+                  documents and a review.
+                </div>
+              )}
               {error ? (
                 <p className="mt-4 text-sm text-[#a23a32]" role="alert">
                   {error}
@@ -371,7 +401,9 @@ export function NumberOnboardingDialog({
           <div className="p-5 sm:p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#26342b]">Available in {areaCode}</h3>
+                <h3 className="text-sm font-semibold text-[#26342b]">
+                  {countryCode === "FR" ? "Available in France" : `Available in ${areaCode}`}
+                </h3>
                 <p className="mt-1 text-xs text-[#738078]">
                   Choose the number you&apos;d like to use with Riink.
                 </p>
@@ -399,7 +431,7 @@ export function NumberOnboardingDialog({
                     </span>
                     <span className="mt-1 block text-xs text-[#738078]">
                       {[candidate.locality, candidate.region].filter(Boolean).join(", ") ||
-                        "United States"}
+                        (candidate.countryCode === "FR" ? "France" : "United States")}
                     </span>
                   </span>
                   <span
@@ -417,7 +449,9 @@ export function NumberOnboardingDialog({
               ))}
               {candidates.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-[#d8dfda] px-5 py-12 text-center text-sm text-[#68736c]">
-                  No phone numbers were found. Try another area code.
+                  {countryCode === "FR"
+                    ? "No French SMS numbers are currently available."
+                    : "No phone numbers were found. Try another area code."}
                 </div>
               ) : null}
             </div>
@@ -460,12 +494,15 @@ export function NumberOnboardingDialog({
               <Field label="Legal business name" error={fieldErrors.has("legalBusinessName")}>
                 <input className={inputClass("legalBusinessName")} name="legalBusinessName" required />
               </Field>
-              <Field label="EIN" error={fieldErrors.has("ein")}>
+              <Field
+                label={countryCode === "FR" ? "SIREN or SIRET" : "EIN"}
+                error={fieldErrors.has("ein")}
+              >
                 <input
                   className={inputClass("ein")}
                   inputMode="numeric"
                   name="ein"
-                  placeholder="12-3456789"
+                  placeholder={countryCode === "FR" ? "12345678900012" : "12-3456789"}
                   required
                 />
               </Field>
@@ -492,21 +529,27 @@ export function NumberOnboardingDialog({
                 <input className={inputClass("businessAddress.city")} name="city" required />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="State" error={fieldErrors.has("businessAddress.state")}>
+                <Field
+                  label={countryCode === "FR" ? "Region" : "State"}
+                  error={fieldErrors.has("businessAddress.state")}
+                >
                   <input
-                    autoCapitalize="characters"
+                    autoCapitalize={countryCode === "FR" ? "words" : "characters"}
                     className={inputClass("businessAddress.state")}
-                    maxLength={2}
+                    maxLength={countryCode === "FR" ? 100 : 2}
                     name="state"
-                    placeholder="TX"
+                    placeholder={countryCode === "FR" ? "Ile de France" : "TX"}
                     required
                   />
                 </Field>
-                <Field label="ZIP code" error={fieldErrors.has("businessAddress.postalCode")}>
+                <Field
+                  label={countryCode === "FR" ? "Postal code" : "ZIP code"}
+                  error={fieldErrors.has("businessAddress.postalCode")}
+                >
                   <input
                     className={inputClass("businessAddress.postalCode")}
                     name="postalCode"
-                    placeholder="78701"
+                    placeholder={countryCode === "FR" ? "75001" : "78701"}
                     required
                   />
                 </Field>
@@ -530,7 +573,7 @@ export function NumberOnboardingDialog({
                 <input
                   className={inputClass("phone")}
                   name="phone"
-                  placeholder="(512) 555-0192"
+                  placeholder={countryCode === "FR" ? "06 12 34 56 78" : "(512) 555-0192"}
                   required
                   type="tel"
                 />
@@ -598,7 +641,9 @@ export function NumberOnboardingDialog({
             </div>
 
             <div className="mt-6 rounded-xl border border-[#dce6df] bg-[#f4f8f5] px-4 py-3 text-xs leading-5 text-[#5f6c64]">
-              {needsBillingSetup
+              {countryCode === "FR"
+                ? "French number activation is subject to provider availability and regulatory review. We may contact you for supporting documents."
+                : needsBillingSetup
                 ? "You'll add payment details on the next step. Billing starts when your number is ready."
                 : "Billing starts when your number is ready. You won't be charged during number setup."}
             </div>

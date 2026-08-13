@@ -181,6 +181,30 @@ describe("TwilioSmsProvider", () => {
     });
   });
 
+  it("searches French SMS numbers without a NANP area code", async () => {
+    mocks.availableList.mockResolvedValueOnce([
+      {
+        phoneNumber: "+33939031234",
+        locality: "France",
+        region: null,
+        capabilities: { sms: true },
+      },
+    ]);
+
+    await expect(
+      provider.searchNumbers({
+        workspaceId: "workspace-1",
+        countryCode: "FR",
+        limit: 10,
+      }),
+    ).resolves.toMatchObject([{ phoneNumber: "+33939031234", supportsSms: true }]);
+    expect(mocks.availablePhoneNumbers).toHaveBeenCalledWith("FR");
+    expect(mocks.availableList).toHaveBeenCalledWith({
+      smsEnabled: true,
+      limit: 10,
+    });
+  });
+
   it("purchases, configures, attaches and releases a number", async () => {
     await expect(
       provider.purchaseNumber({

@@ -13,6 +13,7 @@ export interface BusinessAddressInput {
 }
 
 export interface BusinessVerificationInput {
+  countryCode: "US" | "FR";
   legalBusinessName: string;
   ein: string;
   businessAddress: BusinessAddressInput;
@@ -36,7 +37,7 @@ export interface NormalizedBusinessVerification {
     city: string;
     state: string;
     postalCode: string;
-    country: "US";
+    country: "US" | "FR";
   };
   website: string;
   contactName: string;
@@ -180,7 +181,9 @@ export function validateBusinessVerification(
   input: BusinessVerificationInput,
 ): BusinessVerificationValidation {
   const issues: BusinessVerificationIssue[] = [];
-  const state = input.businessAddress.state.trim().toUpperCase();
+  const countryCode = input.countryCode;
+  const state = input.businessAddress.state.trim();
+  const normalizedState = countryCode === "US" ? state.toUpperCase() : state;
   const einDigits = input.ein.replace(/\D/g, "");
   const phoneE164 = normalizePhoneNumber(input.phone);
   const sampleMessages = input.sampleMessages.map((message) => message.trim()).filter(Boolean);
@@ -234,15 +237,27 @@ export function validateBusinessVerification(
     issues.push({ field: "sampleMessages", code: "invalid" });
   }
 
-  if (input.ein.trim() && !/^\d{2}-?\d{7}$/.test(input.ein.trim())) {
+  if (
+    input.ein.trim() &&
+    (countryCode === "US"
+      ? !/^\d{2}-?\d{7}$/.test(input.ein.trim())
+      : !/^(?:\d{9}|\d{14})$/.test(einDigits))
+  ) {
     issues.push({ field: "ein", code: "invalid" });
   }
-  if (input.businessAddress.state.trim() && !US_STATE_CODES.has(state)) {
+  if (
+    state &&
+    (countryCode === "US"
+      ? !US_STATE_CODES.has(normalizedState)
+      : state.length < 2)
+  ) {
     issues.push({ field: "businessAddress.state", code: "invalid" });
   }
   if (
     input.businessAddress.postalCode.trim() &&
-    !/^\d{5}(?:-\d{4})?$/.test(input.businessAddress.postalCode.trim())
+    !(countryCode === "US"
+      ? /^\d{5}(?:-\d{4})?$/.test(input.businessAddress.postalCode.trim())
+      : /^\d{5}$/.test(input.businessAddress.postalCode.trim()))
   ) {
     issues.push({ field: "businessAddress.postalCode", code: "invalid" });
   }
@@ -286,14 +301,17 @@ export function validateBusinessVerification(
     issues: [],
     value: {
       legalBusinessName: input.legalBusinessName.trim(),
-      ein: `${einDigits.slice(0, 2)}-${einDigits.slice(2)}`,
+      ein:
+        countryCode === "US"
+          ? `${einDigits.slice(0, 2)}-${einDigits.slice(2)}`
+          : einDigits,
       businessAddress: {
         line1: input.businessAddress.line1.trim(),
         line2: input.businessAddress.line2?.trim() ?? "",
         city: input.businessAddress.city.trim(),
-        state,
+        state: normalizedState,
         postalCode: input.businessAddress.postalCode.trim(),
-        country: "US",
+        country: countryCode,
       },
       website: input.website.trim(),
       contactName: input.contactName.trim(),

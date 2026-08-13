@@ -44,7 +44,8 @@ export interface NumberClientDto {
 export interface NumberSearchCandidateDto {
   selectionId: string;
   phoneNumber: string;
-  areaCode: string;
+  areaCode: string | null;
+  countryCode: "US" | "FR";
   locality: string | null;
   region: string | null;
 }

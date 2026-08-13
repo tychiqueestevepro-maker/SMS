@@ -68,6 +68,13 @@ const DEFAULT_NUMBERS: readonly SimulatedNumberInventoryItem[] = [
     region: "CA",
     supportsSms: true,
   },
+  {
+    providerNumberId: "sim-number-fr-0001",
+    phoneNumber: "+33939031234",
+    locality: "France",
+    region: null,
+    supportsSms: true,
+  },
 ];
 
 /** Deterministic, in-memory provider used by local development and tests. */
@@ -146,6 +153,11 @@ export class SimulatedMessagingProvider implements SmsProvider {
 
     return this.inventory
       .filter((number) => !purchasedIds.has(number.providerNumberId))
+      .filter((number) =>
+        input.countryCode === "FR"
+          ? number.phoneNumber.startsWith("+33")
+          : number.phoneNumber.startsWith("+1"),
+      )
       .filter(
         (number) =>
           !areaCode || number.phoneNumber.slice(2, 5) === areaCode,

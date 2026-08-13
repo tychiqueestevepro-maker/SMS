@@ -3,12 +3,17 @@ import "server-only";
 import twilio from "twilio";
 
 import type {
+  TwilioAccountCredentials,
   TwilioClientFactory,
   TwilioClientLike,
   TwilioMasterClientFactory,
   TwilioMasterClientLike,
   TwilioWebhookValidator,
 } from "./types";
+
+/** Raw SDK client for provider adapters that use resources outside the narrow messaging surface. */
+export const createTwilioSdkClient = (credentials: TwilioAccountCredentials): unknown =>
+  twilio(credentials.accountSid, credentials.authToken);
 
 /** Creates a client scoped to the workspace's isolated account. */
 export const createTwilioSubaccountClient: TwilioClientFactory = (

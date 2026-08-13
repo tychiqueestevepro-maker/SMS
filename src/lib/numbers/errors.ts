@@ -7,7 +7,8 @@ export type NumberProductErrorCode =
   | "NUMBER_IMPORT_EMAIL_REQUIRED"
   | "NUMBER_IMPORT_NOT_ELIGIBLE"
   | "NUMBER_IMPORT_UNAVAILABLE"
-  | "NUMBER_SETUP_INVALID";
+  | "NUMBER_SETUP_INVALID"
+  | "CONNECTED_NUMBER_CANNOT_BE_REMOVED";
 
 const NUMBER_PRODUCT_ERRORS: Record<NumberProductErrorCode, string> = {
   INVALID_AREA_CODE: "Enter a valid three-digit US area code.",
@@ -24,6 +25,8 @@ const NUMBER_PRODUCT_ERRORS: Record<NumberProductErrorCode, string> = {
     "Number importing is currently unavailable. Please try again later.",
   NUMBER_SETUP_INVALID:
     "Some business verification details need your attention.",
+  CONNECTED_NUMBER_CANNOT_BE_REMOVED:
+    "This connected number is managed from the Riink owner account and cannot be removed here.",
 };
 
 export class NumberProductError extends Error {

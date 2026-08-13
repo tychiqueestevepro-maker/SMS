@@ -13,6 +13,7 @@ import type {
   SmsProvider,
   WorkspaceMessagingSetupProvider,
 } from "./provider";
+import type { PurchasableNumberCountryCode } from "./types";
 import type { NormalizedBusinessVerification } from "../numbers/business";
 import { NumberProductError } from "../numbers/errors";
 import type {
@@ -106,8 +107,13 @@ function storedFailure(failure: ProviderFailureDetails): InternalSetupFailure {
   };
 }
 
-function safePhoneNumber(value: string): boolean {
-  return /^\+1[2-9]\d{9}$/.test(value);
+function safePhoneNumber(
+  value: string,
+  countryCode: PurchasableNumberCountryCode,
+): boolean {
+  return countryCode === "US"
+    ? /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(value)
+    : /^\+33[1-79]\d{8}$/.test(value);
 }
 
 /**
@@ -135,7 +141,8 @@ export class NumberProvisioningService {
   }
 
   async searchNumbers(input: {
-    areaCode: string;
+    areaCode?: string;
+    countryCode: PurchasableNumberCountryCode;
     limit?: number;
     requestId: string;
     workspaceId: string;
@@ -151,19 +158,23 @@ export class NumberProvisioningService {
     try {
       const candidates = await this.provider.searchNumbers({
         workspaceId: input.workspaceId,
-        countryCode: "US",
+        countryCode: input.countryCode,
         areaCode: input.areaCode,
         limit: input.limit,
       });
       return candidates.flatMap((candidate) => {
-        if (!candidate.supportsSms || !safePhoneNumber(candidate.phoneNumber)) {
+        if (
+          !candidate.supportsSms ||
+          !safePhoneNumber(candidate.phoneNumber, input.countryCode)
+        ) {
           return [];
         }
         return [
           {
             selectionId: this.selectionSigner.issue(
               {
-                areaCode: input.areaCode,
+                areaCode: input.areaCode ?? null,
+                countryCode: input.countryCode,
                 phoneNumber: candidate.phoneNumber,
                 providerNumberId: candidate.providerNumberId,
                 workspaceId: input.workspaceId,
@@ -171,7 +182,8 @@ export class NumberProvisioningService {
               { now: this.now() },
             ),
             phoneNumber: candidate.phoneNumber,
-            areaCode: input.areaCode,
+            areaCode: input.areaCode ?? null,
+            countryCode: input.countryCode,
             locality: candidate.locality,
             region: candidate.region,
           },
@@ -206,6 +218,9 @@ export class NumberProvisioningService {
       input.workspaceId,
       this.now(),
     );
+    if (selection.countryCode !== input.businessVerification.businessAddress.country) {
+      throw new NumberProductError("NUMBER_SETUP_INVALID");
+    }
     await this.ensureWorkspaceMessaging(input.workspaceId);
 
     const requestedOperationId = this.operationId();

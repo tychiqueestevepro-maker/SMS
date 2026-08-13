@@ -1,10 +1,5 @@
 import type { Metadata } from "next";
-import {
-  Clock3,
-  CreditCard,
-  Phone,
-  UserRound,
-} from "lucide-react";
+import { CreditCard, Phone, UserRound } from "lucide-react";
 
 import { loadBillingSettingsData } from "@/app/(app)/settings/billing-data";
 import { loadNumberSettingsData } from "@/app/(app)/settings/numbers-data";
@@ -31,19 +26,6 @@ function SectionHeading({ description, title }: { description: string; title: st
   );
 }
 
-type WorkspaceRow = {
-  id: string;
-};
-
-type StageRow = {
-  id: string;
-  is_default: boolean;
-  name: string;
-  position: number;
-};
-
-
-
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
@@ -54,13 +36,6 @@ export default async function SettingsPage() {
     loadBillingSettingsData(),
     loadNumberSettingsData(),
   ]);
-  const { data: workspaceData } = user
-    ? await supabase
-        .from("workspaces")
-        .select("id")
-        .eq("owner_id", user.id)
-        .maybeSingle()
-    : { data: null };
 
   return (
     <>

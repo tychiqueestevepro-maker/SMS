@@ -3,8 +3,10 @@ import type { NumberClientDto, NumberSearchCandidateDto } from "@/lib/numbers/pr
 
 export type NumberSettingsData = {
   canImportNumber: boolean;
+  canConnectExistingNumber: boolean;
   canObtainIncludedNumber: boolean;
   importedNumberCount: number;
+  existingNumberToConnect: string | null;
   importNumberUnavailableReason: "billing" | "configuration" | null;
   includedNumberCount: number;
   includedNumberUnavailableReason: "billing" | "limit" | null;
@@ -25,6 +27,7 @@ export type NumberActionResult = {
   candidates?: NumberSearchCandidateDto[];
   countryCode?: string;
   eligibilityToken?: string;
+  manualImport?: boolean;
   fieldErrors?: BusinessVerificationField[];
   phoneNumber?: string;
 };

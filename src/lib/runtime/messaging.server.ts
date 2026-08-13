@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SmsProvider } from "@/lib/messaging/provider";
 import { NumberProvisioningService } from "@/lib/messaging/number-service.server";
 import { NumberImportService } from "@/lib/messaging/number-import-service.server";
+import { ConfiguredNumberService } from "@/lib/messaging/configured-number-service.server";
 import { getApplicationOrigin } from "@/lib/application-url";
 import { logServerEvent } from "@/lib/observability/logger";
 import { ManualMessageSender } from "@/lib/inbox/manual-dispatch";
@@ -13,6 +14,7 @@ import { numberSelectionSignerFromEnvironment } from "@/lib/numbers/selection-to
 import { numberImportEligibilitySignerFromEnvironment } from "@/lib/numbers/import-eligibility-token.server";
 import { SupabaseNumberProvisioningRepository } from "@/lib/numbers/supabase-provisioning-repository.server";
 import { SupabaseNumberImportRepository } from "@/lib/numbers/supabase-import-repository.server";
+import { ConfiguredNumberRepository } from "@/lib/numbers/configured-number-repository.server";
 import {
   createTwilioSmsProvider,
   createTwilioWorkspaceSetupProvider,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/providers/twilio";
 import { createTwilioSubaccountClient } from "@/lib/providers/twilio/client";
 import { TwilioExistingNumberOnboardingProvider } from "@/lib/providers/twilio/number-import";
+import { TwilioConfiguredNumberConnector } from "@/lib/providers/twilio/existing-number";
 import {
   credentialVaultFromEnvironment,
   type CredentialVault,
@@ -208,6 +211,31 @@ export function numberImportServiceFromEnvironment(): NumberImportService {
     },
   );
   return numberImportService;
+}
+
+let configuredNumberService: ConfiguredNumberService | undefined;
+
+export function configuredNumberServiceFromEnvironment(): ConfiguredNumberService {
+  if (configuredNumberService) return configuredNumberService;
+  const client = createServiceRoleClient();
+  const vault = credentialVaultFromEnvironment();
+  const resolveCredentials = createWorkspaceMessagingCredentialsResolver({ client, vault });
+  configuredNumberService = new ConfiguredNumberService(
+    new ConfiguredNumberRepository(client),
+    new TwilioConfiguredNumberConnector({
+      masterAccountSid: requiredEnvironment("TWILIO_ACCOUNT_SID"),
+      masterAuthToken: requiredEnvironment("TWILIO_AUTH_TOKEN"),
+      resolveCredentials,
+    }),
+    {
+      applicationOrigin: getApplicationOrigin(),
+      ensureWorkspaceReady: async (workspaceId) => {
+        await numberProvisioningServiceFromEnvironment().ensureWorkspaceReady(workspaceId);
+      },
+      providerName: ACTIVE_PROVIDER_NAME,
+    },
+  );
+  return configuredNumberService;
 }
 
 export function manualMessageSenderFromEnvironment(): ManualMessageSender {

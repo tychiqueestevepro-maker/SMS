@@ -77,6 +77,16 @@ describe("SMS webhook adapter normalization", () => {
     ).toMatchObject({ kind: "inbound", confirmedConsent: null });
   });
 
+  it("normalizes inbound French SMS numbers", () => {
+    expect(
+      normalize(inboundForm({ From: "+33612345678", To: "+33939031234" }))?.event,
+    ).toMatchObject({
+      kind: "inbound",
+      fromPhoneNumber: "+33612345678",
+      toPhoneNumber: "+33939031234",
+    });
+  });
+
   it("normalizes status callbacks and retains the internal error code", () => {
     const result = normalize(
       new URLSearchParams({
