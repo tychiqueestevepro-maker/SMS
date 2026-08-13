@@ -52,6 +52,7 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
   const [showActivationConfirmation, setShowActivationConfirmation] = useState(false);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [limitInput, setLimitInput] = useState("");
+  const [promotionCode, setPromotionCode] = useState("");
   const [isPending, startTransition] = useTransition();
   const { paymentMethod, plan, subscription, usage } = data;
   const usagePercent = usage?.includedCredits
@@ -112,7 +113,7 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
   function activateSubscription() {
     setNotice(null);
     startTransition(async () => {
-      const result = await activateConfiguredAccountSubscription();
+      const result = await activateConfiguredAccountSubscription(promotionCode);
       setShowActivationConfirmation(false);
       if (!result.ok) {
         setNotice({ message: result.message, tone: "error" });
@@ -349,6 +350,27 @@ export function BillingSettingsPanel({ data }: { data: BillingSettingsData }) {
             The charge today is {plan ? formatMonthlyPrice(plan.monthlyPriceCents) : "the plan price"}.
             Your existing French number will remain connected to this workspace.
           </p>
+          <div className="mt-4">
+            <label
+              className="text-sm font-semibold text-[#26342b]"
+              htmlFor="subscription-promotion-code"
+            >
+              Promo code <span className="font-normal text-[#68736c]">(optional)</span>
+            </label>
+            <input
+              autoComplete="off"
+              className="mt-2 w-full rounded-lg border border-[#d7dfd9] bg-white px-3 py-2 text-sm text-[#26342b] outline-none transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] placeholder:text-[#9aa39d] focus:border-[#78a58b] focus:ring-2 focus:ring-[#dbece1]"
+              disabled={isPending}
+              id="subscription-promotion-code"
+              maxLength={50}
+              onChange={(event) => setPromotionCode(event.target.value)}
+              placeholder="Enter your code"
+              value={promotionCode}
+            />
+            <p className="mt-2 text-xs text-[#738078]">
+              Stripe checks the code before your payment is created.
+            </p>
+          </div>
         </div>
         <div className="flex justify-end gap-3 px-5 py-4 sm:px-6">
           <Button

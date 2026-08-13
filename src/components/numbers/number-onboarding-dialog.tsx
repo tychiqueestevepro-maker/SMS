@@ -149,7 +149,11 @@ export function NumberOnboardingDialog({
   const [fieldErrors, setFieldErrors] = useState<Set<BusinessVerificationField>>(new Set());
   const [isPending, startTransition] = useTransition();
   // We hold the business FormData between step 3 → 4 so we can submit after payment.
-  const pendingBusinessRef = useRef<{ selectionId: string; business: BusinessVerificationInput } | null>(null);
+  const pendingBusinessRef = useRef<{
+    selectionId: string;
+    business: BusinessVerificationInput;
+    promotionCode: string;
+  } | null>(null);
   // Stripe setup state (only used when needsBillingSetup)
   const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
@@ -218,6 +222,7 @@ export function NumberOnboardingDialog({
       terms: String(formData.get("terms") ?? ""),
       website: String(formData.get("website") ?? ""),
     };
+    const promotionCode = String(formData.get("promotionCode") ?? "");
     setError(null);
     setFieldErrors(new Set());
 
@@ -229,7 +234,11 @@ export function NumberOnboardingDialog({
           setError(session.message);
           return;
         }
-        pendingBusinessRef.current = { selectionId: selected.selectionId, business };
+        pendingBusinessRef.current = {
+          selectionId: selected.selectionId,
+          business,
+          promotionCode,
+        };
         setStripeClientSecret(session.clientSecret);
         setStep(4);
       });
@@ -238,7 +247,11 @@ export function NumberOnboardingDialog({
 
     // The card is already saved or the subscription is active, so setup can start.
     startTransition(async () => {
-      const result = await startNumberOnboardingAction(selected.selectionId, business);
+      const result = await startNumberOnboardingAction(
+        selected.selectionId,
+        business,
+        promotionCode,
+      );
       if (!result.ok) {
         setError(result.message);
         setFieldErrors(new Set(result.fieldErrors ?? []));
@@ -259,6 +272,7 @@ export function NumberOnboardingDialog({
       const result = await startNumberOnboardingAction(
         pending.selectionId,
         pending.business,
+        pending.promotionCode,
       );
       if (!result.ok) {
         setError(result.message);
@@ -690,6 +704,15 @@ export function NumberOnboardingDialog({
                 <textarea
                   className={`${baseInputClass} min-h-20 border-[#dbe2dd] py-2.5 focus:border-[#2e7d57] focus:ring-[#d8ebe0]`}
                   name="sampleMessage2"
+                />
+              </Field>
+              <Field className="sm:col-span-2" label="Promo code (optional)">
+                <input
+                  autoComplete="off"
+                  className={`${baseInputClass} border-[#dbe2dd] focus:border-[#2e7d57] focus:ring-[#d8ebe0]`}
+                  maxLength={50}
+                  name="promotionCode"
+                  placeholder="Enter your code"
                 />
               </Field>
             </div>

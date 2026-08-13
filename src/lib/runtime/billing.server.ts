@@ -27,11 +27,15 @@ export function billingPublishableKeyFromEnvironment(): string {
  * Number onboarding uses this boundary after the provider purchase is durable
  * and before transitioning the first number to Ready.
  */
-export async function ensureWorkspaceSubscriptionActive(workspaceId: string) {
+export async function ensureWorkspaceSubscriptionActive(
+  workspaceId: string,
+  promotionCode?: string,
+) {
   const priceId = process.env.STRIPE_BASE_PRICE_ID?.trim();
   if (!priceId) throw new Error("Riink billing plan configuration is missing.");
   return billingServiceFromEnvironment().ensureActiveSubscription({
     priceId,
+    ...(promotionCode ? { promotionCode } : {}),
     workspaceId,
   });
 }

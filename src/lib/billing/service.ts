@@ -20,6 +20,12 @@ export interface StartPaymentSetupInput {
 export interface ActivateSubscriptionInput {
   workspaceId: string;
   priceId: string;
+  promotionCode?: string;
+}
+
+function optionalPromotionCode(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized.toUpperCase() : undefined;
 }
 
 function required(value: string, label: string): string {
@@ -169,6 +175,7 @@ export class BillingService {
    */
   async ensureActiveSubscription(input: ActivateSubscriptionInput) {
     const workspaceId = required(input.workspaceId, "Workspace ID");
+    const promotionCode = optionalPromotionCode(input.promotionCode);
     try {
       const account = await this.repository.getWorkspaceAccount(workspaceId);
       if (!account.customerId || !account.defaultPaymentMethodId) {
@@ -227,8 +234,9 @@ export class BillingService {
       const subscription = await this.gateway.createSubscription({
         customerId: account.customerId,
         defaultPaymentMethodId: account.defaultPaymentMethodId,
-        idempotencyKey: `billing-subscription:${workspaceId}`,
+        idempotencyKey: `billing-subscription:${workspaceId}:${promotionCode ?? "none"}`,
         priceId,
+        ...(promotionCode ? { promotionCode } : {}),
         workspaceId,
       });
       if (subscription.status !== "active") {
@@ -252,6 +260,12 @@ export class BillingService {
       };
     } catch (error) {
       if (error instanceof ProductBillingError) throw error;
+      if (
+        error instanceof BillingProviderError &&
+        error.providerCode === "PROMOTION_CODE_INVALID"
+      ) {
+        throw new ProductBillingError("PROMOTION_CODE_INVALID");
+      }
       if (error instanceof BillingProviderError) {
         throw toProductBillingError(error.operation);
       }

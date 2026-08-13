@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { BillingGateway } from "./gateway";
+import { BillingProviderError, type BillingGateway } from "./gateway";
 import type { BillingRepository, WorkspaceBillingAccount } from "./repository";
 import { BillingService } from "./service";
 
@@ -192,6 +192,54 @@ describe("BillingService", () => {
       }),
     );
     expect(gateway.getRecurringPrice).toHaveBeenCalledWith({ priceId: "price-1" });
+  });
+
+  it("normalizes and forwards a promo code only for a new subscription", async () => {
+    const { gateway, repository } = fixtures({
+      customerId: "customer-1",
+      defaultPaymentMethodId: "payment-method-1",
+    });
+    const service = new BillingService(repository, gateway);
+
+    await service.ensureActiveSubscription({
+      priceId: "price-1",
+      promotionCode: "  save20  ",
+      workspaceId: "workspace-1",
+    });
+
+    expect(gateway.createSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "billing-subscription:workspace-1:SAVE20",
+        promotionCode: "SAVE20",
+      }),
+    );
+  });
+
+  it("returns a product safe error for an invalid promo code", async () => {
+    const { gateway, repository } = fixtures({
+      customerId: "customer-1",
+      defaultPaymentMethodId: "payment-method-1",
+    });
+    vi.mocked(gateway.createSubscription).mockRejectedValue(
+      new BillingProviderError({
+        operation: "create_subscription",
+        providerCode: "PROMOTION_CODE_INVALID",
+        providerMessage: "Raw provider promotion error",
+      }),
+    );
+    const service = new BillingService(repository, gateway);
+
+    await expect(
+      service.ensureActiveSubscription({
+        priceId: "price-1",
+        promotionCode: "EXPIRED",
+        workspaceId: "workspace-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "PROMOTION_CODE_INVALID",
+      message: "This promo code is invalid or no longer available.",
+    });
+    expect(repository.recordSubscription).not.toHaveBeenCalled();
   });
 
   it.each([

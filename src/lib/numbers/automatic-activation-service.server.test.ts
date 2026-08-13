@@ -76,6 +76,16 @@ describe("AutomaticNumberActivationService", () => {
     });
   });
 
+  it("forwards the promo code only after the provider purchase is confirmed", async () => {
+    await service().activate({
+      numberId: "number-1",
+      promotionCode: "SAVE20",
+      workspaceId: "workspace-1",
+    });
+
+    expect(ensureSubscription).toHaveBeenCalledWith("workspace-1", "SAVE20");
+  });
+
   it("does not start billing when the provider purchase is not confirmed", async () => {
     repository.claimPurchasedNumber.mockResolvedValue({
       activationId: null,

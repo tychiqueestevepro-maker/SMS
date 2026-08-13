@@ -17,6 +17,7 @@ export interface ActiveWorkspaceSubscription {
 
 export type EnsureWorkspaceSubscriptionActive = (
   workspaceId: string,
+  promotionCode?: string,
 ) => Promise<ActiveWorkspaceSubscription>;
 
 export interface AutomaticNumberActivationResult {
@@ -45,6 +46,7 @@ export class AutomaticNumberActivationService {
 
   async activate(input: {
     numberId: string;
+    promotionCode?: string;
     workspaceId: string;
   }): Promise<AutomaticNumberActivationResult> {
     let claim: AutomaticNumberActivationClaim;
@@ -81,7 +83,10 @@ export class AutomaticNumberActivationService {
     }
 
     try {
-      const subscription = await this.ensureSubscriptionActive(claim.workspaceId);
+      const subscription = await this.ensureSubscriptionActive(
+        claim.workspaceId,
+        input.promotionCode,
+      );
       if (
         subscription.active !== true ||
         !subscription.subscriptionId.trim() ||

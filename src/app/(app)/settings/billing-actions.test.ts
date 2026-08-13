@@ -160,7 +160,7 @@ describe("requestBillingCancellation", () => {
       message: "Your Riink subscription is active.",
       ok: true,
     });
-    expect(mocks.ensureSubscription).toHaveBeenCalledWith(WORKSPACE_ID);
+    expect(mocks.ensureSubscription).toHaveBeenCalledWith(WORKSPACE_ID, undefined);
     expect(mocks.connectConfiguredNumber).toHaveBeenCalledWith(WORKSPACE_ID);
     expect(mocks.connectConfiguredNumber.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.ensureSubscription.mock.invocationCallOrder[0]!,
@@ -175,5 +175,36 @@ describe("requestBillingCancellation", () => {
     });
     expect(mocks.ensureSubscription).not.toHaveBeenCalled();
     expect(mocks.connectConfiguredNumber).not.toHaveBeenCalled();
+  });
+
+  it("validates and forwards the promo code after connecting the configured number", async () => {
+    mocks.createClient.mockResolvedValue(
+      authenticatedClient({
+        email: "tychiqueesteve2005@gmail.com",
+        id: "813e98ef-74da-4752-a228-3a018e56d777",
+      }),
+    );
+
+    await expect(activateConfiguredAccountSubscription(" SAVE20 ")).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(mocks.ensureSubscription).toHaveBeenCalledWith(WORKSPACE_ID, "SAVE20");
+  });
+
+  it("rejects malformed promo codes before connecting the number", async () => {
+    mocks.createClient.mockResolvedValue(
+      authenticatedClient({
+        email: "tychiqueesteve2005@gmail.com",
+        id: "813e98ef-74da-4752-a228-3a018e56d777",
+      }),
+    );
+
+    await expect(activateConfiguredAccountSubscription("INVALID CODE")).resolves.toEqual({
+      code: "PROMOTION_CODE_INVALID",
+      message: "Enter a valid promo code.",
+      ok: false,
+    });
+    expect(mocks.connectConfiguredNumber).not.toHaveBeenCalled();
+    expect(mocks.ensureSubscription).not.toHaveBeenCalled();
   });
 });

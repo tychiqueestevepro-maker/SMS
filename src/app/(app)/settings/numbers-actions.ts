@@ -108,9 +108,24 @@ export async function connectConfiguredExistingNumberAction(): Promise<NumberAct
 export async function startNumberOnboardingAction(
   selectionIdInput: string,
   businessInput: BusinessVerificationInput,
+  promotionCodeInput = "",
 ): Promise<NumberActionResult> {
   try {
     const selectionId = z.string().trim().min(1).max(2_000).parse(selectionIdInput);
+    const promotionCodeResult = z
+      .string()
+      .trim()
+      .max(50)
+      .regex(/^[A-Za-z0-9-]*$/)
+      .safeParse(promotionCodeInput);
+    if (!promotionCodeResult.success) {
+      return {
+        code: "PROMOTION_CODE_INVALID",
+        message: "Enter a valid promo code.",
+        ok: false,
+      };
+    }
+    const promotionCode = promotionCodeResult.data.toUpperCase();
     const verification = validateBusinessVerification(businessInput);
     if (!verification.valid) {
       return {
@@ -137,6 +152,7 @@ export async function startNumberOnboardingAction(
     });
     await automaticNumberActivationServiceFromEnvironment().activate({
       numberId: onboarding.phoneNumberId,
+      ...(promotionCode ? { promotionCode } : {}),
       workspaceId: context.workspaceId,
     });
 

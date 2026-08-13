@@ -104,4 +104,27 @@ describe("number onboarding billing timing", () => {
       mocks.activateNumber.mock.invocationCallOrder[0]!,
     );
   });
+
+  it("forwards a normalized promo code to automatic activation", async () => {
+    mocks.loadContext.mockResolvedValue(context(true));
+
+    await expect(
+      startNumberOnboardingAction("selection-1", BUSINESS, " save20 "),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.activateNumber).toHaveBeenCalledWith({
+      numberId: "number-1",
+      promotionCode: "SAVE20",
+      workspaceId: "workspace-1",
+    });
+  });
+
+  it("rejects malformed promo codes before purchasing a number", async () => {
+    mocks.loadContext.mockResolvedValue(context(true));
+
+    await expect(
+      startNumberOnboardingAction("selection-1", BUSINESS, "INVALID CODE"),
+    ).resolves.toMatchObject({ ok: false });
+    expect(mocks.startOnboarding).not.toHaveBeenCalled();
+    expect(mocks.activateNumber).not.toHaveBeenCalled();
+  });
 });

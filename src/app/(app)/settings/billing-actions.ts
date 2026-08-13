@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import type {
   BillingActivationActionResult,
@@ -72,7 +73,9 @@ async function authenticatedBillingContext(): Promise<BillingActionContext | Bil
   };
 }
 
-export async function activateConfiguredAccountSubscription(): Promise<BillingActivationActionResult> {
+export async function activateConfiguredAccountSubscription(
+  promotionCodeInput = "",
+): Promise<BillingActivationActionResult> {
   const context = await authenticatedBillingContext();
   if ("ok" in context) return context;
   if (
@@ -88,9 +91,26 @@ export async function activateConfiguredAccountSubscription(): Promise<BillingAc
     };
   }
 
+  const promotionCode = z
+    .string()
+    .trim()
+    .max(50)
+    .regex(/^[A-Za-z0-9-]*$/)
+    .safeParse(promotionCodeInput);
+  if (!promotionCode.success) {
+    return {
+      code: "PROMOTION_CODE_INVALID",
+      message: "Enter a valid promo code.",
+      ok: false,
+    };
+  }
+
   try {
     await configuredNumberServiceFromEnvironment().connect(context.workspaceId);
-    await ensureWorkspaceSubscriptionActive(context.workspaceId);
+    await ensureWorkspaceSubscriptionActive(
+      context.workspaceId,
+      promotionCode.data || undefined,
+    );
     logServerEvent(
       "info",
       {
@@ -110,7 +130,10 @@ export async function activateConfiguredAccountSubscription(): Promise<BillingAc
         ? error
         : new ProductBillingError("BILLING_ACTIVATION_FAILED");
     return {
-      code: "BILLING_ACTIVATION_FAILED",
+      code:
+        productError.code === "PROMOTION_CODE_INVALID"
+          ? "PROMOTION_CODE_INVALID"
+          : "BILLING_ACTIVATION_FAILED",
       message: productError.message,
       ok: false,
     };

@@ -233,10 +233,13 @@ describe("BillingSettingsPanel", () => {
     expect(mocks.activateConfiguredAccountSubscription).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "Start Riink subscription?" })).toBeTruthy();
     expect(screen.getByText(/The charge today is \$89.99/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Promo code/), {
+      target: { value: "SAVE20" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Pay and start subscription" }));
     expect(await screen.findByText("Your Riink subscription is active.")).toBeTruthy();
-    expect(mocks.activateConfiguredAccountSubscription).toHaveBeenCalledOnce();
+    expect(mocks.activateConfiguredAccountSubscription).toHaveBeenCalledWith("SAVE20");
     expect(mocks.refresh).toHaveBeenCalledOnce();
   });
 

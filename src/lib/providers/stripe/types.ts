@@ -39,6 +39,16 @@ export interface StripePriceRecord {
   unit_amount: number | null;
 }
 
+export interface StripePromotionCodeRecord {
+  active: boolean;
+  code: string;
+  customer: string | { id: string } | null;
+  expires_at: number | null;
+  id: string;
+  max_redemptions: number | null;
+  times_redeemed: number;
+}
+
 export interface StripeClientPort {
   customers: {
     create(params: Record<string, unknown>, options?: StripeRequestOptions): Promise<{ id: string }>;
@@ -75,6 +85,9 @@ export interface StripeClientPort {
   };
   prices: {
     retrieve(id: string): Promise<StripePriceRecord>;
+  };
+  promotionCodes: {
+    list(params: Record<string, unknown>): Promise<StripeListPage<StripePromotionCodeRecord>>;
   };
   invoiceItems: {
     create(

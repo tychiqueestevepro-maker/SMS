@@ -87,6 +87,7 @@ export interface BillingGateway {
     defaultPaymentMethodId: string;
     idempotencyKey: string;
     priceId: string;
+    promotionCode?: string;
     workspaceId: string;
   }): Promise<{
     latestInvoiceId: string | null;
@@ -148,13 +149,15 @@ export type ProductBillingErrorCode =
   | "BILLING_SETUP_FAILED"
   | "BILLING_PORTAL_FAILED"
   | "BILLING_ACTIVATION_FAILED"
-  | "BILLING_CANCELLATION_FAILED";
+  | "BILLING_CANCELLATION_FAILED"
+  | "PROMOTION_CODE_INVALID";
 
 const PRODUCT_BILLING_MESSAGES: Record<ProductBillingErrorCode, string> = {
   BILLING_SETUP_FAILED: "Billing setup couldn't be started. Please try again later.",
   BILLING_PORTAL_FAILED: "Billing settings couldn't be opened. Please try again later.",
   BILLING_ACTIVATION_FAILED: "Billing couldn't be activated. Please try again later.",
   BILLING_CANCELLATION_FAILED: "Cancellation couldn't be scheduled. Please try again later.",
+  PROMOTION_CODE_INVALID: "This promo code is invalid or no longer available.",
 };
 
 export class ProductBillingError extends Error {

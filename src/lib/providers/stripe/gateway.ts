@@ -320,11 +320,47 @@ export class StripeBillingGateway implements BillingGateway {
       }
       if (existing[0]) return subscriptionResult(existing[0], priceId);
 
+      let promotionCodeId: string | null = null;
+      if (input.promotionCode) {
+        const promotionCode = required(input.promotionCode, "Promotion code");
+        const promotionPage = await this.client.promotionCodes.list({
+          active: true,
+          code: promotionCode,
+          limit: 2,
+        });
+        const matches = promotionPage.data.filter((candidate) => {
+          const restrictedCustomer = candidate.customer
+            ? typeof candidate.customer === "string"
+              ? candidate.customer
+              : candidate.customer.id
+            : null;
+          return (
+            candidate.active &&
+            candidate.code.toLowerCase() === promotionCode.toLowerCase() &&
+            (!restrictedCustomer || restrictedCustomer === customerId) &&
+            (!candidate.expires_at || candidate.expires_at * 1_000 > Date.now()) &&
+            (!candidate.max_redemptions ||
+              candidate.times_redeemed < candidate.max_redemptions)
+          );
+        });
+        if (promotionPage.has_more || matches.length !== 1) {
+          throw new BillingProviderError({
+            operation: "create_subscription",
+            providerCode: "PROMOTION_CODE_INVALID",
+            providerMessage: "Promotion code is invalid or unavailable.",
+          });
+        }
+        promotionCodeId = matches[0]!.id;
+      }
+
       const subscription = await this.client.subscriptions.create(
         {
           customer: customerId,
           default_payment_method: required(input.defaultPaymentMethodId, "Payment method ID"),
           items: [{ price: priceId }],
+          ...(promotionCodeId
+            ? { discounts: [{ promotion_code: promotionCodeId }] }
+            : {}),
           off_session: true,
           // Number activation is fail-closed: no usable subscription is
           // persisted if the first invoice cannot be paid automatically.
@@ -337,7 +373,21 @@ export class StripeBillingGateway implements BillingGateway {
       return subscriptionResult(subscription, priceId);
     } catch (error) {
       if (error instanceof RangeError) throw error;
-      throw providerError(error, "create_subscription");
+      if (error instanceof BillingProviderError) throw error;
+      const mapped = providerError(error, "create_subscription");
+      if (
+        input.promotionCode &&
+        `${mapped.providerCode ?? ""} ${mapped.providerMessage}`
+          .toLowerCase()
+          .match(/promotion|coupon|discount/)
+      ) {
+        throw new BillingProviderError({
+          operation: "create_subscription",
+          providerCode: "PROMOTION_CODE_INVALID",
+          providerMessage: mapped.providerMessage,
+        });
+      }
+      throw mapped;
     }
   }
 

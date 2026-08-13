@@ -52,6 +52,9 @@ function client(): StripeClientPort {
         unit_amount: 8_999,
       })),
     },
+    promotionCodes: {
+      list: vi.fn(async () => ({ data: [], has_more: false })),
+    },
     invoiceItems: {
       create: vi.fn(async () => ({ id: "ii_1" })),
       list: vi.fn(async () => ({ data: [], has_more: false })),
@@ -130,6 +133,93 @@ describe("StripeBillingGateway", () => {
       }),
       { idempotencyKey: "subscription:ws_1" },
     );
+  });
+
+  it("applies the exact active Stripe promotion code to the new subscription", async () => {
+    fake.promotionCodes.list = vi.fn(async () => ({
+      data: [{
+        active: true,
+        code: "SAVE20",
+        customer: null,
+        expires_at: null,
+        id: "promo_1",
+        max_redemptions: null,
+        times_redeemed: 0,
+      }],
+      has_more: false,
+    }));
+
+    await gateway.createSubscription({
+      customerId: "cus_1",
+      defaultPaymentMethodId: "pm_1",
+      idempotencyKey: "subscription:ws_1:SAVE20",
+      priceId: "price_1",
+      promotionCode: "SAVE20",
+      workspaceId: "ws_1",
+    });
+
+    expect(fake.promotionCodes.list).toHaveBeenCalledWith({
+      active: true,
+      code: "SAVE20",
+      limit: 2,
+    });
+    expect(fake.subscriptions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        discounts: [{ promotion_code: "promo_1" }],
+      }),
+      { idempotencyKey: "subscription:ws_1:SAVE20" },
+    );
+  });
+
+  it("does not create a subscription for an unknown promotion code", async () => {
+    await expect(
+      gateway.createSubscription({
+        customerId: "cus_1",
+        defaultPaymentMethodId: "pm_1",
+        idempotencyKey: "subscription:ws_1:UNKNOWN",
+        priceId: "price_1",
+        promotionCode: "UNKNOWN",
+        workspaceId: "ws_1",
+      }),
+    ).rejects.toMatchObject({
+      operation: "create_subscription",
+      providerCode: "PROMOTION_CODE_INVALID",
+    });
+    expect(fake.subscriptions.create).not.toHaveBeenCalled();
+  });
+
+  it("maps Stripe promotion restrictions to the promo code error", async () => {
+    fake.promotionCodes.list = vi.fn(async () => ({
+      data: [{
+        active: true,
+        code: "FIRSTORDER",
+        customer: null,
+        expires_at: null,
+        id: "promo_first",
+        max_redemptions: null,
+        times_redeemed: 0,
+      }],
+      has_more: false,
+    }));
+    fake.subscriptions.create = vi.fn(async () => {
+      throw {
+        code: "promotion_code_customer_mismatch",
+        message: "The promotion code cannot be redeemed by this customer.",
+      };
+    });
+
+    await expect(
+      gateway.createSubscription({
+        customerId: "cus_1",
+        defaultPaymentMethodId: "pm_1",
+        idempotencyKey: "subscription:ws_1:FIRSTORDER",
+        priceId: "price_1",
+        promotionCode: "FIRSTORDER",
+        workspaceId: "ws_1",
+      }),
+    ).rejects.toMatchObject({
+      providerCode: "PROMOTION_CODE_INVALID",
+    });
   });
 
   it("reuses the subscription correlated by durable workspace metadata", async () => {
