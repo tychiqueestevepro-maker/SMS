@@ -144,3 +144,9 @@ export type CampaignActionResult = {
   assessment?: CampaignLaunchAssessment;
   confirmationKey?: string;
 };
+
+export type CampaignTestSendActionResult = {
+  ok: boolean;
+  message: string;
+  phoneNumber?: string;
+};

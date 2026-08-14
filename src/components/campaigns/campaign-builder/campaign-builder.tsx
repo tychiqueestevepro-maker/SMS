@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Eye, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -15,6 +15,7 @@ import { CampaignDetailsCard } from "@/components/campaigns/campaign-builder/cam
 import { CampaignScheduleCard } from "@/components/campaigns/campaign-builder/campaign-schedule-card";
 import { CampaignSequence } from "@/components/campaigns/campaign-builder/campaign-sequence";
 import { CampaignSummaryCard } from "@/components/campaigns/campaign-builder/campaign-summary-card";
+import { CampaignTestSendDialog } from "@/components/campaigns/campaign-test-send-dialog";
 import type { CampaignEditorDto, CampaignStepDto } from "@/components/campaigns/types";
 
 export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDto }) {
@@ -42,6 +43,8 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
   );
 
   const [submittingAction, setSubmittingAction] = useState<"launch" | "save" | null>(null);
+  const [isDeletingDraft, setIsDeletingDraft] = useState(false);
+  const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [launchConfirmation, setLaunchConfirmation] = useState<{
     campaignId: string;
@@ -161,6 +164,18 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
     }
   };
 
+  const handleDeleteDraft = async () => {
+    if (!initialData.id || isDeletingDraft) return;
+    if (!confirm("Are you sure you want to delete this draft?")) return;
+    setIsDeletingDraft(true);
+    try {
+      await deleteCampaignAction(initialData.id);
+      router.push("/campaigns");
+    } finally {
+      setIsDeletingDraft(false);
+    }
+  };
+
   return (
     <div className="flex w-full flex-col gap-6 p-4 sm:p-6">
       {/* Top Breadcrumb & Header */}
@@ -190,14 +205,9 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
         {/* Top-right Actions */}
         <div className="flex items-center gap-2">
           <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#FBFCFB]"
-            type="button"
-          >
-            <Eye size={15} className="text-[#66706A]" />
-            <span>Preview</span>
-          </button>
-          <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#FBFCFB]"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FBFCFB] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#07813F]/30 disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+            disabled={!phoneNumberId || !steps[0]?.body.trim()}
+            onClick={() => setIsTestDialogOpen(true)}
             type="button"
           >
             <Send size={15} className="text-[#66706A]" />
@@ -251,16 +261,12 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
                 </p>
               </div>
               <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#DA4545] px-4 text-xs font-semibold text-white hover:opacity-90"
-                onClick={async () => {
-                  if (confirm("Are you sure you want to delete this draft?")) {
-                    await deleteCampaignAction(initialData.id!);
-                    router.push("/campaigns");
-                  }
-                }}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#DA4545] px-3 text-sm font-semibold text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#949D97]"
+                disabled={isDeletingDraft}
+                onClick={handleDeleteDraft}
                 type="button"
               >
-                Delete draft
+                {isDeletingDraft ? "Deleting..." : "Delete draft"}
               </button>
             </div>
           )}
@@ -320,12 +326,19 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
                 )}
                 type="button"
               >
-                Launch campaign
+                {submittingAction === "launch" ? "Launching..." : "Launch campaign"}
               </button>
             </div>
           </section>
         </div>
       ) : null}
+
+      <CampaignTestSendDialog
+        body={steps[0]?.body ?? ""}
+        isOpen={isTestDialogOpen}
+        onClose={() => setIsTestDialogOpen(false)}
+        phoneNumberId={phoneNumberId}
+      />
     </div>
   );
 }

@@ -4,11 +4,18 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { loadCampaignLaunchContext } from "@/app/(app)/campaigns/data";
-import type { CampaignActionResult, CampaignDraftPayload } from "@/components/campaigns/types";
+import type {
+  CampaignActionResult,
+  CampaignDraftPayload,
+  CampaignTestSendActionResult,
+} from "@/components/campaigns/types";
 import { campaignLaunchConfirmationKey } from "@/lib/campaigns/launch";
 import { loadCustomerBillingCapabilities } from "@/lib/billing/customer-capabilities.server";
 import type { CampaignLaunchAssessment } from "@/lib/campaigns/types";
+import { renderCampaignTemplate, validateCampaignTemplate } from "@/lib/campaigns/templates";
 import { validateCampaignSteps } from "@/lib/campaigns/validation";
+import { normalizePhoneNumber } from "@/lib/contacts/phone";
+import { messagingRuntimeFromEnvironment } from "@/lib/runtime/messaging.server";
 import { createClient } from "@/lib/supabase/server";
 
 const stepSchema = z.object({
@@ -33,6 +40,13 @@ const draftSchema = z.object({
 }, {
   message: "Start time must be before end time",
   path: ["sendWindowStart"],
+});
+
+const campaignTestSendSchema = z.object({
+  body: z.string().trim().min(1).max(1600),
+  phoneNumberId: z.string().uuid(),
+  recipientPhoneNumber: z.string().trim().min(1).max(40),
+  requestId: z.string().uuid(),
 });
 
 function failure(message: string, code?: CampaignActionResult["code"]): CampaignActionResult {
@@ -223,4 +237,99 @@ export async function resumeCampaignAction(campaignId: string) {
 
 export async function deleteCampaignAction(campaignId: string) {
   return transitionCampaign(campaignId, "delete_campaign", "Campaign deleted.");
+}
+
+export async function sendCampaignTestMessageAction(input: {
+  body: string;
+  phoneNumberId: string;
+  recipientPhoneNumber: string;
+  requestId: string;
+}): Promise<CampaignTestSendActionResult> {
+  const parsed = campaignTestSendSchema.safeParse(input);
+  if (!parsed.success) {
+    return { message: "Enter a valid phone number and first message.", ok: false };
+  }
+
+  const templateIssues = validateCampaignTemplate(parsed.data.body);
+  if (templateIssues.length > 0) {
+    return { message: "Fix the variables in the first message before testing it.", ok: false };
+  }
+
+  const recipientPhoneE164 = normalizePhoneNumber(parsed.data.recipientPhoneNumber);
+  if (!recipientPhoneE164) {
+    return { message: "Enter a valid French, US, or Canadian phone number.", ok: false };
+  }
+
+  const renderedBody = renderCampaignTemplate(parsed.data.body, {
+    company: "Riink",
+    firstName: "Test",
+    lastName: "Contact",
+  }).trim();
+  if (!renderedBody) {
+    return { message: "The first message is empty after personalization.", ok: false };
+  }
+
+  const { supabase, workspaceId } = await currentWorkspaceId();
+  if (!workspaceId) return { message: "Your workspace isn't ready yet.", ok: false };
+
+  const capabilities = await loadCustomerBillingCapabilities(supabase);
+  if (!capabilities.canSendMessages) {
+    return {
+      message: capabilities.safetyCapReached
+        ? "Sending is paused because your SMS credit safety limit has been reached."
+        : "Messaging is currently unavailable. Check Billing in Settings.",
+      ok: false,
+    };
+  }
+
+  const { data, error } = await supabase.rpc("claim_campaign_test_send", {
+    p_body: renderedBody,
+    p_now: new Date().toISOString(),
+    p_phone_number_id: parsed.data.phoneNumberId,
+    p_recipient_phone_e164: recipientPhoneE164,
+    p_request_id: parsed.data.requestId,
+  });
+  if (error) {
+    return {
+      message:
+        error.code === "54000"
+          ? "You have reached the test send limit. Try again in one hour."
+          : "The test message couldn't be sent. Check the sending number and try again.",
+      ok: false,
+    };
+  }
+
+  const claim = Array.isArray(data) ? data[0] : data;
+  if (!claim || typeof claim.source_phone_e164 !== "string") {
+    return { message: "The test message couldn't be prepared. Please try again.", ok: false };
+  }
+  if (claim.disposition === "already_claimed") {
+    return {
+      message: "This test request was already accepted.",
+      ok: true,
+      phoneNumber: recipientPhoneE164,
+    };
+  }
+
+  try {
+    await messagingRuntimeFromEnvironment().provider.sendMessage({
+      body: renderedBody,
+      from: claim.source_phone_e164,
+      idempotencyKey: parsed.data.requestId,
+      messageId: parsed.data.requestId,
+      to: recipientPhoneE164,
+      workspaceId,
+    });
+  } catch {
+    return {
+      message: "Twilio couldn't accept the test message. Check the number and try again.",
+      ok: false,
+    };
+  }
+
+  return {
+    message: "Test message accepted for delivery.",
+    ok: true,
+    phoneNumber: recipientPhoneE164,
+  };
 }

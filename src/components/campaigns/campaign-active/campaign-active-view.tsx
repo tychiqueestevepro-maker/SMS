@@ -8,6 +8,7 @@ import {
   Pause,
   Play,
   Rocket,
+  Send,
   Settings,
   Trash2,
   Workflow,
@@ -28,6 +29,7 @@ import { CampaignDetailsCard } from "@/components/campaigns/campaign-active/camp
 import { CampaignMetaBar } from "@/components/campaigns/campaign-active/campaign-meta-bar";
 import { CampaignResponsesInbox } from "@/components/campaigns/campaign-active/campaign-responses-inbox";
 import { CampaignSettingsTab } from "@/components/campaigns/campaign-active/campaign-settings-tab";
+import { CampaignTestSendDialog } from "@/components/campaigns/campaign-test-send-dialog";
 import { SendingNumberModal } from "@/components/campaigns/sending-number-modal";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status";
 import type { CampaignEditorDto } from "@/components/campaigns/types";
@@ -38,28 +40,37 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ViewTab>("overview");
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeAction, setActiveAction] = useState<"delete" | "pause" | "resume" | null>(null);
   const [isNumberModalOpen, setIsNumberModalOpen] = useState(false);
+  const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
 
   const monitoring = initialData.activeMonitoring;
 
   const handlePauseResume = async () => {
-    if (!initialData.id) return;
-    setIsLoading(true);
-    if (initialData.status === "active") {
-      await pauseCampaignAction(initialData.id);
-    } else {
-      await resumeCampaignAction(initialData.id);
+    if (!initialData.id || activeAction) return;
+    const action = initialData.status === "active" ? "pause" : "resume";
+    setActiveAction(action);
+    try {
+      if (action === "pause") {
+        await pauseCampaignAction(initialData.id);
+      } else {
+        await resumeCampaignAction(initialData.id);
+      }
+      router.refresh();
+    } finally {
+      setActiveAction(null);
     }
-    setIsLoading(false);
-    router.refresh();
   };
 
   const handleDelete = async () => {
-    if (!initialData.id) return;
-    setIsLoading(true);
-    await deleteCampaignAction(initialData.id);
-    router.push("/campaigns");
+    if (!initialData.id || activeAction) return;
+    setActiveAction("delete");
+    try {
+      await deleteCampaignAction(initialData.id);
+      router.push("/campaigns");
+    } finally {
+      setActiveAction(null);
+    }
   };
 
   const handleSelectNumber = async (newNumberId: string) => {
@@ -119,26 +130,37 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
         {/* Top-Right Actions */}
         <div className="flex items-center gap-2">
           <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-4 text-xs font-semibold text-[#171A18] hover:bg-[#FBFCFB]"
-            disabled={isLoading}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FBFCFB] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#07813F]/30 disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+            disabled={Boolean(activeAction) || !initialData.phoneNumberId || !initialData.steps[0]?.body.trim()}
+            onClick={() => setIsTestDialogOpen(true)}
+            type="button"
+          >
+            <Send size={15} className="text-[#66706A]" />
+            <span>Test send</span>
+          </button>
+
+          <button
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FBFCFB] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#07813F]/30 disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+            disabled={Boolean(activeAction)}
             onClick={handlePauseResume}
             type="button"
           >
             {initialData.status === "active" ? (
               <>
                 <Pause size={14} className="text-[#B97913]" />
-                <span>Pause campaign</span>
+                <span>{activeAction === "pause" ? "Pausing..." : "Pause campaign"}</span>
               </>
             ) : (
               <>
                 <Play size={14} className="text-[#07813F]" />
-                <span>Resume campaign</span>
+                <span>{activeAction === "resume" ? "Resuming..." : "Resume campaign"}</span>
               </>
             )}
           </button>
 
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3.5 text-xs font-semibold text-[#171A18] hover:bg-[#FBFCFB]"
+            disabled={Boolean(activeAction)}
             onClick={() => setActiveTab("settings")}
             title="Campaign settings"
             type="button"
@@ -149,6 +171,7 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
 
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F8C4C4] bg-white px-3.5 text-xs font-semibold text-[#DA4545] hover:bg-[#FDECEC]"
+            disabled={Boolean(activeAction)}
             onClick={() => setIsDeleting(true)}
             title="Delete campaign"
             type="button"
@@ -282,22 +305,31 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
             <div className="mt-5 flex items-center justify-end gap-2.5">
               <button
                 className="h-9 rounded-lg border border-[#E5E9E6] px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#F2F4F3]"
+                disabled={activeAction === "delete"}
                 onClick={() => setIsDeleting(false)}
                 type="button"
               >
                 Cancel
               </button>
               <button
-                className="h-9 rounded-lg bg-[#DA4545] px-3.5 text-xs font-semibold text-white hover:opacity-90"
+                className="h-9 rounded-lg bg-[#DA4545] px-3 text-sm font-semibold text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#949D97]"
+                disabled={activeAction === "delete"}
                 onClick={handleDelete}
                 type="button"
               >
-                Delete
+                {activeAction === "delete" ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <CampaignTestSendDialog
+        body={initialData.steps[0]?.body ?? ""}
+        isOpen={isTestDialogOpen}
+        onClose={() => setIsTestDialogOpen(false)}
+        phoneNumberId={initialData.phoneNumberId}
+      />
     </div>
   );
 }

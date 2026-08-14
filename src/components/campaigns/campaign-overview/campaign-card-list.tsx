@@ -48,19 +48,36 @@ function getIconForIndex(index: number) {
 export function CampaignCardList({ campaigns }: { campaigns: CampaignListItemDto[] }) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    campaignId: string;
+    type: "delete" | "pause" | "resume";
+  } | null>(null);
 
   const handlePauseResume = async (campaign: CampaignListItemDto) => {
-    setOpenMenuId(null);
-    if (campaign.status === "active") {
-      await pauseCampaignAction(campaign.id);
-    } else if (campaign.status === "paused") {
-      await resumeCampaignAction(campaign.id);
+    if (pendingAction) return;
+    const type = campaign.status === "active" ? "pause" : "resume";
+    setPendingAction({ campaignId: campaign.id, type });
+    try {
+      if (type === "pause") {
+        await pauseCampaignAction(campaign.id);
+      } else {
+        await resumeCampaignAction(campaign.id);
+      }
+      setOpenMenuId(null);
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleDelete = async (campaignId: string) => {
-    await deleteCampaignAction(campaignId);
-    setDeletingId(null);
+    if (pendingAction) return;
+    setPendingAction({ campaignId, type: "delete" });
+    try {
+      await deleteCampaignAction(campaignId);
+      setDeletingId(null);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   if (campaigns.length === 0) {
@@ -90,6 +107,8 @@ export function CampaignCardList({ campaigns }: { campaigns: CampaignListItemDto
         const isActive = campaign.status === "active";
         const isDraft = campaign.status === "draft";
         const isPaused = campaign.status === "paused";
+        const campaignPendingAction =
+          pendingAction?.campaignId === campaign.id ? pendingAction.type : null;
 
         const dotColor = isActive
           ? "bg-[#07813F]"
@@ -185,7 +204,8 @@ export function CampaignCardList({ campaigns }: { campaigns: CampaignListItemDto
               <div className="relative">
                 <button
                   aria-label="Actions"
-                  className="grid size-8 place-items-center rounded-lg text-[#949D97] hover:bg-[#F2F4F3] hover:text-[#171A18]"
+                  className="grid size-8 place-items-center rounded-lg text-[#949D97] hover:bg-[#F2F4F3] hover:text-[#171A18] disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:opacity-50"
+                  disabled={Boolean(campaignPendingAction)}
                   onClick={() => setOpenMenuId(openMenuId === campaign.id ? null : campaign.id)}
                   type="button"
                 >
@@ -204,28 +224,31 @@ export function CampaignCardList({ campaigns }: { campaigns: CampaignListItemDto
 
                     {isActive && (
                       <button
-                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-[#B97913] hover:bg-[#FFF4DE]"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-[#B97913] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FFF4DE] disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+                        disabled={Boolean(campaignPendingAction)}
                         onClick={() => handlePauseResume(campaign)}
                         type="button"
                       >
                         <Pause size={14} />
-                        Pause campaign
+                        {campaignPendingAction === "pause" ? "Pausing..." : "Pause campaign"}
                       </button>
                     )}
 
                     {isPaused && (
                       <button
-                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-[#07813F] hover:bg-[#E9F5EE]"
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-[#07813F] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#E9F5EE] disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+                        disabled={Boolean(campaignPendingAction)}
                         onClick={() => handlePauseResume(campaign)}
                         type="button"
                       >
                         <Play size={14} />
-                        Resume campaign
+                        {campaignPendingAction === "resume" ? "Resuming..." : "Resume campaign"}
                       </button>
                     )}
 
                     <button
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[#DA4545] hover:bg-[#FDECEC]"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[#DA4545] hover:bg-[#FDECEC] disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+                      disabled={Boolean(campaignPendingAction)}
                       onClick={() => {
                         setDeletingId(campaign.id);
                         setOpenMenuId(null);
@@ -251,17 +274,19 @@ export function CampaignCardList({ campaigns }: { campaigns: CampaignListItemDto
                   <div className="mt-5 flex items-center justify-end gap-2.5">
                     <button
                       className="h-9 rounded-lg border border-[#E5E9E6] px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#F2F4F3]"
+                      disabled={campaignPendingAction === "delete"}
                       onClick={() => setDeletingId(null)}
                       type="button"
                     >
                       Cancel
                     </button>
                     <button
-                      className="h-9 rounded-lg bg-[#DA4545] px-3.5 text-xs font-semibold text-white hover:opacity-90"
+                      className="h-9 rounded-lg bg-[#DA4545] px-3 text-sm font-semibold text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[#949D97]"
+                      disabled={campaignPendingAction === "delete"}
                       onClick={() => handleDelete(campaign.id)}
                       type="button"
                     >
-                      Delete
+                      {campaignPendingAction === "delete" ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 </div>

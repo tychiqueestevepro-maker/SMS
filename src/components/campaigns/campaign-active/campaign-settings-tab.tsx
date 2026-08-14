@@ -53,7 +53,7 @@ export function CampaignSettingsTab({ initialData }: { initialData: CampaignEdit
   const [isDeletingModalOpen, setIsDeletingModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   const selectedPhone = initialData.phoneNumbers.find((p) => p.id === phoneNumberId);
 
@@ -68,32 +68,35 @@ export function CampaignSettingsTab({ initialData }: { initialData: CampaignEdit
   };
 
   const handleSaveSettings = async () => {
+    if (isSaving) return;
     setIsSaving(true);
     setNotice(null);
+    try {
+      const res = await saveCampaignDraftAction({
+        campaignId: initialData.id,
+        contactIds: initialData.selectedContactIds,
+        dripIntervalMinutes,
+        name,
+        phoneNumberId,
+        sendWindowEnd,
+        sendWindowStart,
+        sendingDays,
+        steps: initialData.steps,
+        timezone,
+      });
 
-    const res = await saveCampaignDraftAction({
-      campaignId: initialData.id,
-      contactIds: initialData.selectedContactIds,
-      dripIntervalMinutes,
-      name,
-      phoneNumberId,
-      sendWindowEnd,
-      sendWindowStart,
-      sendingDays,
-      steps: initialData.steps,
-      timezone,
-    });
-
-    setIsSaving(false);
-    if (res.ok) {
-      setNotice({ message: "Campaign settings saved successfully!", ok: true });
-    } else {
-      setNotice({ message: res.message || "Failed to save settings.", ok: false });
+      if (res.ok) {
+        setNotice({ message: "Campaign settings saved.", ok: true });
+      } else {
+        setNotice({ message: res.message || "Failed to save settings.", ok: false });
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = () => {
-    if (!initialData.id) return;
+    if (!initialData.id || isPending) return;
     startTransition(async () => {
       await deleteCampaignAction(initialData.id!);
       router.push("/campaigns");
@@ -101,7 +104,7 @@ export function CampaignSettingsTab({ initialData }: { initialData: CampaignEdit
   };
 
   const handleArchive = () => {
-    if (!initialData.id) return;
+    if (!initialData.id || isPending) return;
     startTransition(async () => {
       await pauseCampaignAction(initialData.id!);
       router.push("/campaigns");
@@ -297,12 +300,13 @@ export function CampaignSettingsTab({ initialData }: { initialData: CampaignEdit
           </div>
 
           <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] px-4 text-xs font-semibold text-[#171A18] hover:bg-[#F2F4F3]"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#F2F4F3] disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
+            disabled={isPending}
             onClick={handleArchive}
             type="button"
           >
             <Pause size={14} className="text-[#B97913]" />
-            <span>Archive campaign</span>
+            <span>{isPending ? "Archiving..." : "Archive campaign"}</span>
           </button>
         </div>
       </div>
@@ -351,17 +355,19 @@ export function CampaignSettingsTab({ initialData }: { initialData: CampaignEdit
             <div className="mt-5 flex items-center justify-end gap-2.5">
               <button
                 className="h-9 rounded-lg border border-[#E5E9E6] px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#F2F4F3]"
+                disabled={isPending}
                 onClick={() => setIsDeletingModalOpen(false)}
                 type="button"
               >
                 Cancel
               </button>
               <button
-                className="h-9 rounded-lg bg-[#DA4545] px-3.5 text-xs font-semibold text-white hover:opacity-90"
+                className="h-9 rounded-lg bg-[#DA4545] px-3 text-sm font-semibold text-white transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[#949D97]"
+                disabled={isPending}
                 onClick={handleDelete}
                 type="button"
               >
-                Delete permanently
+                {isPending ? "Deleting..." : "Delete permanently"}
               </button>
             </div>
           </div>

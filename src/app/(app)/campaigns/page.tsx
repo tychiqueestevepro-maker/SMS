@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BarChart2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 
 import { loadCampaignList } from "@/app/(app)/campaigns/data";
@@ -22,14 +22,6 @@ export default async function CampaignsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#FBFCFB]"
-            type="button"
-          >
-            <BarChart2 size={15} className="text-[#66706A]" />
-            <span>View analytics</span>
-          </button>
-
           <Link
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#07813F] px-4 text-xs font-semibold text-white transition-opacity hover:opacity-90"
             href="/campaigns/new"

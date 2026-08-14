@@ -1352,6 +1352,20 @@ export type Database = {
           is_suppressed: boolean
         }[]
       }
+      claim_campaign_test_send: {
+        Args: {
+          p_body: string
+          p_now?: string
+          p_phone_number_id: string
+          p_recipient_phone_e164: string
+          p_request_id: string
+        }
+        Returns: {
+          disposition: string
+          source_phone_e164: string
+          workspace_id: string
+        }[]
+      }
       claim_phone_number_import: {
         Args: {
           p_country_code: string
