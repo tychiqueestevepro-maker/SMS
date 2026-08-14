@@ -8,7 +8,6 @@ import {
   Pause,
   Play,
   Rocket,
-  Send,
   Settings,
   Trash2,
   Workflow,
@@ -29,7 +28,6 @@ import { CampaignDetailsCard } from "@/components/campaigns/campaign-active/camp
 import { CampaignMetaBar } from "@/components/campaigns/campaign-active/campaign-meta-bar";
 import { CampaignResponsesInbox } from "@/components/campaigns/campaign-active/campaign-responses-inbox";
 import { CampaignSettingsTab } from "@/components/campaigns/campaign-active/campaign-settings-tab";
-import { CampaignTestSendDialog } from "@/components/campaigns/campaign-test-send-dialog";
 import { SendingNumberModal } from "@/components/campaigns/sending-number-modal";
 import { CampaignStatusBadge } from "@/components/campaigns/campaign-status";
 import type { CampaignEditorDto } from "@/components/campaigns/types";
@@ -42,7 +40,6 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeAction, setActiveAction] = useState<"delete" | "pause" | "resume" | null>(null);
   const [isNumberModalOpen, setIsNumberModalOpen] = useState(false);
-  const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
 
   const monitoring = initialData.activeMonitoring;
 
@@ -129,16 +126,6 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
 
         {/* Top-Right Actions */}
         <div className="flex items-center gap-2">
-          <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FBFCFB] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#07813F]/30 disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
-            disabled={Boolean(activeAction) || !initialData.phoneNumberId || !initialData.steps[0]?.body.trim()}
-            onClick={() => setIsTestDialogOpen(true)}
-            type="button"
-          >
-            <Send size={15} className="text-[#66706A]" />
-            <span>Test send</span>
-          </button>
-
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FBFCFB] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#07813F]/30 disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
             disabled={Boolean(activeAction)}
@@ -324,12 +311,6 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
         </div>
       )}
 
-      <CampaignTestSendDialog
-        body={initialData.steps[0]?.body ?? ""}
-        isOpen={isTestDialogOpen}
-        onClose={() => setIsTestDialogOpen(false)}
-        phoneNumberId={initialData.phoneNumberId}
-      />
     </div>
   );
 }
