@@ -22,7 +22,8 @@ type CampaignSummaryCardProps = {
   messagesCount: number;
   onLaunch: (consent: boolean) => void;
   onSaveDraft: () => void;
-  isSubmitting: boolean;
+  statusMessage: { type: "success" | "error"; text: string } | null;
+  submittingAction: "launch" | "save" | null;
 };
 
 export function CampaignSummaryCard({
@@ -38,9 +39,11 @@ export function CampaignSummaryCard({
   messagesCount,
   onLaunch,
   onSaveDraft,
-  isSubmitting,
+  statusMessage,
+  submittingAction,
 }: CampaignSummaryCardProps) {
   const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const isSubmitting = submittingAction !== null;
 
   const canLaunch =
     Boolean(phoneNumber && phoneNumber.status === "ready") &&
@@ -174,7 +177,7 @@ export function CampaignSummaryCard({
           type="button"
         >
           <Play size={15} />
-          <span>Launch campaign</span>
+          <span>{submittingAction === "launch" ? "Launching..." : "Launch campaign"}</span>
         </button>
 
         <button
@@ -184,8 +187,21 @@ export function CampaignSummaryCard({
           type="button"
         >
           <Save size={15} />
-          <span>Save draft</span>
+          <span>{submittingAction === "save" ? "Saving..." : "Save draft"}</span>
         </button>
+
+        {statusMessage ? (
+          <div
+            className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+              statusMessage.type === "success"
+                ? "border-[#C2E8D2] bg-[#E9F5EE] text-[#07813F]"
+                : "border-[#FDECEC] bg-[#FDECEC] text-[#DA4545]"
+            }`}
+            role={statusMessage.type === "success" ? "status" : "alert"}
+          >
+            {statusMessage.text}
+          </div>
+        ) : null}
 
         {!consentConfirmed && (
           <p className="text-center text-[11px] text-[#B97913]">

@@ -41,7 +41,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
     initialData.dripIntervalMinutes || 2,
   );
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState<"launch" | "save" | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [launchConfirmation, setLaunchConfirmation] = useState<{
     campaignId: string;
@@ -53,6 +53,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
     () => initialData.phoneNumbers.find((p) => p.id === phoneNumberId) || null,
     [initialData.phoneNumbers, phoneNumberId],
   );
+  const isSubmitting = submittingAction !== null;
 
   const stats = useMemo(() => {
     const selectedSet = new Set(selectedContactIds);
@@ -70,7 +71,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
   }, [initialData.contacts, selectedContactIds]);
 
   const handleSaveDraft = async () => {
-    setIsSubmitting(true);
+    setSubmittingAction("save");
     setStatusMessage(null);
     try {
       const res = await saveCampaignDraftAction({
@@ -97,7 +98,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
     } catch {
       setStatusMessage({ text: "An error occurred saving draft.", type: "error" });
     } finally {
-      setIsSubmitting(false);
+      setSubmittingAction(null);
     }
   };
 
@@ -106,7 +107,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
     confirmationKey: string | null = null,
     campaignIdOverride: string | null = null,
   ) => {
-    setIsSubmitting(true);
+    setSubmittingAction("launch");
     setStatusMessage(null);
     try {
       let campaignIdToLaunch = campaignIdOverride;
@@ -156,7 +157,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
     } catch {
       setStatusMessage({ text: "An error occurred launching campaign.", type: "error" });
     } finally {
-      setIsSubmitting(false);
+      setSubmittingAction(null);
     }
   };
 
@@ -204,19 +205,6 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
           </button>
         </div>
       </div>
-
-      {statusMessage && (
-        <div
-          className={`rounded-xl border p-3.5 text-xs font-medium ${
-            statusMessage.type === "success"
-              ? "border-[#C2E8D2] bg-[#E9F5EE] text-[#07813F]"
-              : "border-[#FDECEC] bg-[#FDECEC] text-[#DA4545]"
-          }`}
-          role={statusMessage.type === "success" ? "status" : "alert"}
-        >
-          {statusMessage.text}
-        </div>
-      )}
 
       {/* Grid Layout: Main builder + sticky summary panel */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_350px]">
@@ -285,7 +273,6 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
             duplicateCount={stats.duplicates}
             eligibleCount={stats.eligible}
             invalidCount={stats.invalid}
-            isSubmitting={isSubmitting}
             messagesCount={steps.length}
             onLaunch={handleLaunch}
             onSaveDraft={handleSaveDraft}
@@ -293,6 +280,8 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
             selectedCount={stats.selected}
             sendWindowEnd={sendWindowEnd}
             sendWindowStart={sendWindowStart}
+            statusMessage={statusMessage}
+            submittingAction={submittingAction}
             timezone={timezone}
           />
         </div>

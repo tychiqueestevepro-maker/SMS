@@ -489,10 +489,10 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
     sendingDays: campaign?.sending_days ?? [1, 2, 3, 4, 5],
     statistics: campaign ? statisticsForCampaign(campaign.id, recipients, messages) : emptyStatistics,
     status: campaign ? clientStatus(campaign.status) : "draft",
-    steps: steps.map((step) => ({
+    steps: steps.map((step, index) => ({
       body: step.body,
       id: step.id,
-      waitDaysAfterPrevious: step.wait_days_after_previous,
+      waitDaysAfterPrevious: index === 0 ? null : step.wait_days_after_previous,
     })),
     timezone: campaign?.timezone ?? "UTC",
   };

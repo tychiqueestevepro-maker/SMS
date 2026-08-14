@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 const stepSchema = z.object({
   body: z.string().max(1600),
   id: z.string().uuid().optional(),
-  waitDaysAfterPrevious: z.number().int().min(1).max(365).nullable(),
+  waitDaysAfterPrevious: z.number().int().min(0).max(365).nullable(),
 });
 
 const draftSchema = z.object({
