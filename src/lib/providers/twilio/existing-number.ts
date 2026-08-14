@@ -18,18 +18,6 @@ type MasterClient = {
   api: {
     v2010: {
       accounts(accountSid: string): {
-        addresses(addressSid: string): {
-          fetch(): Promise<{
-            city: string;
-            customerName: string;
-            friendlyName: string;
-            isoCountry: string;
-            postalCode: string;
-            region: string;
-            street: string;
-            streetSecondary: string;
-          }>;
-        };
         incomingPhoneNumbers(providerNumberId: string): {
           update(input: {
             accountSid: string;
@@ -46,20 +34,47 @@ type MasterClient = {
   };
 };
 
+type RegulatoryBundleCollection = {
+  (bundleSid: string): {
+    itemAssignments: {
+      list(input: { limit: number }): Promise<Array<{ objectSid: string }>>;
+    };
+  };
+  list(input: {
+    friendlyName: string;
+    limit: number;
+  }): Promise<Array<{ sid: string; status: string }>>;
+};
+
 type WorkspaceClient = {
-  addresses: {
-    create(input: {
-      city: string;
-      customerName: string;
-      friendlyName: string;
-      isoCountry: string;
-      postalCode: string;
-      region: string;
-      street: string;
-      streetSecondary?: string;
-    }): Promise<{ sid: string }>;
+  numbers: {
+    v2: {
+      regulatoryCompliance: {
+        bundles: RegulatoryBundleCollection;
+        supportingDocuments(supportingDocumentSid: string): {
+          fetch(): Promise<{ attributes: unknown }>;
+        };
+      };
+    };
   };
 };
+
+const APPROVED_BUNDLE_STATUSES = new Set([
+  "twilio-approved",
+  "provisionally-approved",
+]);
+
+function regulatoryAddressSids(attributes: unknown): string[] {
+  if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) {
+    return [];
+  }
+  const addressSids = (attributes as { address_sids?: unknown }).address_sids;
+  if (!Array.isArray(addressSids)) return [];
+  return addressSids.filter(
+    (addressSid): addressSid is string =>
+      typeof addressSid === "string" && /^AD[0-9a-fA-F]{32}$/.test(addressSid),
+  );
+}
 
 export class TwilioConfiguredNumberConnector {
   constructor(
@@ -85,38 +100,51 @@ export class TwilioConfiguredNumberConnector {
         accountSid: this.input.masterAccountSid,
         authToken: this.input.masterAuthToken,
       }) as MasterClient;
-      const clonedBundle = await master.numbers.v2
-        .bundleClone(input.bundleSid)
-        .create({
-          friendlyName: `Riink workspace ${input.workspaceId}`,
-          targetAccountSid: workspaceCredentials.accountSid,
-        });
+      const workspaceApi = createTwilioSdkClient(workspaceCredentials) as WorkspaceClient;
+      const friendlyName = `Riink workspace ${input.workspaceId}`;
+      const existingBundles = await workspaceApi.numbers.v2.regulatoryCompliance.bundles.list({
+        friendlyName,
+        limit: 20,
+      });
+      const existingBundle = existingBundles.find(
+        (bundle) =>
+          /^BU[0-9a-fA-F]{32}$/.test(bundle.sid) &&
+          APPROVED_BUNDLE_STATUSES.has(bundle.status),
+      );
+      const bundle = existingBundle
+        ? { bundleSid: existingBundle.sid, status: existingBundle.status }
+        : await master.numbers.v2.bundleClone(input.bundleSid).create({
+            friendlyName,
+            targetAccountSid: workspaceCredentials.accountSid,
+          });
       if (
-        !/^BU[0-9a-fA-F]{32}$/.test(clonedBundle.bundleSid) ||
-        !["twilio-approved", "provisionally-approved"].includes(clonedBundle.status)
+        !/^BU[0-9a-fA-F]{32}$/.test(bundle.bundleSid) ||
+        !APPROVED_BUNDLE_STATUSES.has(bundle.status)
       ) {
         throw new Error("The regulatory bundle could not be cloned for this workspace.");
       }
 
-      const sourceAddress = await master.api.v2010
-        .accounts(this.input.masterAccountSid)
-        .addresses(input.addressSid)
-        .fetch();
-      const workspaceApi = createTwilioSdkClient(workspaceCredentials) as WorkspaceClient;
-      const clonedAddress = await workspaceApi.addresses.create({
-        city: sourceAddress.city,
-        customerName: sourceAddress.customerName,
-        friendlyName: `Riink workspace ${input.workspaceId}`,
-        isoCountry: sourceAddress.isoCountry,
-        postalCode: sourceAddress.postalCode,
-        region: sourceAddress.region,
-        street: sourceAddress.street,
-        ...(sourceAddress.streetSecondary
-          ? { streetSecondary: sourceAddress.streetSecondary }
-          : {}),
-      });
-      if (!/^AD[0-9a-fA-F]{32}$/.test(clonedAddress.sid)) {
-        throw new Error("The regulatory address could not be copied for this workspace.");
+      const assignments = await workspaceApi.numbers.v2.regulatoryCompliance
+        .bundles(bundle.bundleSid)
+        .itemAssignments.list({ limit: 100 });
+      const supportingDocuments = await Promise.all(
+        assignments
+          .filter((assignment) => /^RD[0-9a-fA-F]{32}$/.test(assignment.objectSid))
+          .map((assignment) =>
+            workspaceApi.numbers.v2.regulatoryCompliance
+              .supportingDocuments(assignment.objectSid)
+              .fetch(),
+          ),
+      );
+      const addressSids = [
+        ...new Set(
+          supportingDocuments.flatMap((document) =>
+            regulatoryAddressSids(document.attributes),
+          ),
+        ),
+      ];
+      if (addressSids.length !== 1) {
+        throw new Error("The cloned regulatory bundle has no unique address.");
       }
 
       const moved = await master.api.v2010
@@ -124,8 +152,8 @@ export class TwilioConfiguredNumberConnector {
         .incomingPhoneNumbers(input.providerNumberId)
         .update({
           accountSid: workspaceCredentials.accountSid,
-          addressSid: clonedAddress.sid,
-          bundleSid: clonedBundle.bundleSid,
+          addressSid: addressSids[0]!,
+          bundleSid: bundle.bundleSid,
           smsMethod: "POST",
           smsUrl: input.inboundWebhookUrl,
           statusCallback: input.statusCallbackUrl,
