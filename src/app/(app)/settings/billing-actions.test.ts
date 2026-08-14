@@ -6,8 +6,10 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   connectConfiguredNumber: vi.fn(),
   ensureSubscription: vi.fn(),
+  applyPaymentMethodSaved: vi.fn(),
   log: vi.fn(),
   requestCancellation: vi.fn(),
+  retrieveConfirmedSetupIntent: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -27,12 +29,26 @@ vi.mock("@/lib/runtime/messaging.server", () => ({
     connect: mocks.connectConfiguredNumber,
   }),
 }));
+vi.mock("@/lib/providers/stripe/server", () => ({
+  stripeBillingGatewayFromEnvironment: () => ({
+    retrieveConfirmedSetupIntent: mocks.retrieveConfirmedSetupIntent,
+  }),
+}));
+vi.mock("@/lib/billing/supabase-runtime-repository.server", () => ({
+  SupabaseBillingRuntimeRepository: class {
+    applyPaymentMethodSaved = mocks.applyPaymentMethodSaved;
+  },
+}));
+vi.mock("@/lib/supabase/service-role", () => ({
+  createServiceRoleClient: vi.fn(() => ({})),
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 
 import { ProductBillingError } from "@/lib/billing/gateway";
 
 import {
   activateConfiguredAccountSubscription,
+  confirmPaymentSetupAction,
   requestBillingCancellation,
 } from "./billing-actions";
 
@@ -86,6 +102,27 @@ describe("requestBillingCancellation", () => {
     mocks.requestCancellation.mockResolvedValue({ alreadyScheduled: false });
     mocks.connectConfiguredNumber.mockResolvedValue({ phoneNumberId: "number-1" });
     mocks.ensureSubscription.mockResolvedValue({ active: true });
+    mocks.applyPaymentMethodSaved.mockResolvedValue({ workspaceId: WORKSPACE_ID });
+    mocks.retrieveConfirmedSetupIntent.mockResolvedValue({
+      customerId: "cus_1",
+      paymentMethodId: "pm_1",
+      workspaceId: WORKSPACE_ID,
+    });
+  });
+
+  it("uses a UUID claim when persisting a confirmed payment method", async () => {
+    await expect(confirmPaymentSetupAction("seti_1")).resolves.toEqual({ ok: true });
+
+    expect(mocks.applyPaymentMethodSaved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claimToken: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
+        eventId: "direct:seti_1",
+        setupIntentId: "seti_1",
+      }),
+    );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/settings");
   });
 
   it("derives the workspace from the signed-in user and schedules cancellation", async () => {

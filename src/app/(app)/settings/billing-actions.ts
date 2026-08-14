@@ -263,7 +263,7 @@ export async function confirmPaymentSetupAction(
     // applyPaymentMethodSaved is idempotent: calling it directly mirrors what
     // the webhook does, but synchronously — no timing dependency.
     await repository.applyPaymentMethodSaved({
-      claimToken: `direct:${setupIntentId}`,
+      claimToken: crypto.randomUUID(),
       customerId: intent.customerId,
       eventId: `direct:${setupIntentId}`,
       occurredAt: new Date().toISOString(),
@@ -272,6 +272,7 @@ export async function confirmPaymentSetupAction(
       workspaceIdHint: intent.workspaceId,
     });
 
+    revalidatePath("/settings");
     return { ok: true };
   } catch {
     return {
