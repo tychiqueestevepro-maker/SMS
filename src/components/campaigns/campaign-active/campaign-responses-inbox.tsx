@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Search,
   Send,
+  ShieldCheck,
   Smile,
 } from "lucide-react";
 
@@ -98,12 +99,16 @@ export function CampaignResponsesInbox({
     }
   };
 
-  function getStatusBadge(status: CampaignResponseStatus) {
+  function getStatusBadge(status: CampaignResponseStatus, replyVerified = false) {
     switch (status) {
       case "replied":
         return (
-          <span className="rounded bg-[#E9F5EE] px-2 py-0.5 text-[10px] font-bold text-[#07813F]">
-            Replied
+          <span
+            className="inline-flex items-center gap-1 rounded bg-[#E9F5EE] px-2 py-0.5 text-[10px] font-bold text-[#07813F]"
+            title={replyVerified ? "Provider-confirmed reply matched to this campaign" : undefined}
+          >
+            {replyVerified && <ShieldCheck size={11} aria-hidden="true" />}
+            Provider-confirmed reply
           </span>
         );
       case "opted_out":
@@ -131,6 +136,15 @@ export function CampaignResponsesInbox({
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+
+  function formatReplyConfirmation(iso: string) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "Reply matched to this campaign";
+    return `Reply matched to this campaign on ${date.toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })}`;
   }
 
   return (
@@ -235,7 +249,7 @@ export function CampaignResponsesInbox({
                           <p className="truncate text-xs font-semibold text-[#171A18]">
                             {r.contactName}
                           </p>
-                          {getStatusBadge(r.status)}
+                          {getStatusBadge(r.status, r.replyVerified)}
                         </div>
                         {r.company && (
                           <p className="truncate text-[11px] text-[#66706A]">{r.company}</p>
@@ -282,11 +296,17 @@ export function CampaignResponsesInbox({
                         : ""}
                       {selectedConversation.phone}
                     </p>
+                    {selectedConversation.replyVerified && selectedConversation.replyReceivedAt && (
+                      <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-[#07813F]">
+                        <ShieldCheck size={11} aria-hidden="true" />
+                        {formatReplyConfirmation(selectedConversation.replyReceivedAt)}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {getStatusBadge(selectedConversation.status)}
+                  {getStatusBadge(selectedConversation.status, selectedConversation.replyVerified)}
                 </div>
               </div>
 

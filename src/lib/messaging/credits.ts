@@ -6,17 +6,20 @@ const GSM_BASIC_CHARACTERS = new Set(
 
 const GSM_EXTENDED_CHARACTERS = new Set(Array.from("^{}\\[~]|€"));
 
-/**
- * Estimates the SMS credits shown before sending. Final billing always uses
- * the provider-reported segment count.
- */
-export function estimateSmsCredits(message: string): number {
+export type SmsEncoding = "gsm-7" | "unicode";
+
+export type SmsSegmentEstimate = Readonly<{
+  encoding: SmsEncoding;
+  segments: number;
+  units: number;
+}>;
+
+export function estimateSmsSegments(message: string): SmsSegmentEstimate {
   if (message.length === 0) {
-    return 0;
+    return { encoding: "gsm-7", segments: 0, units: 0 };
   }
 
   let gsmUnits = 0;
-  let usesGsmAlphabet = true;
 
   for (const character of message) {
     if (GSM_BASIC_CHARACTERS.has(character)) {
@@ -24,15 +27,27 @@ export function estimateSmsCredits(message: string): number {
     } else if (GSM_EXTENDED_CHARACTERS.has(character)) {
       gsmUnits += 2;
     } else {
-      usesGsmAlphabet = false;
-      break;
+      const unicodeUnits = message.length;
+      return {
+        encoding: "unicode",
+        segments:
+          unicodeUnits <= 70 ? 1 : Math.ceil(unicodeUnits / 67),
+        units: unicodeUnits,
+      };
     }
   }
 
-  if (usesGsmAlphabet) {
-    return gsmUnits <= 160 ? 1 : Math.ceil(gsmUnits / 153);
-  }
+  return {
+    encoding: "gsm-7",
+    segments: gsmUnits <= 160 ? 1 : Math.ceil(gsmUnits / 153),
+    units: gsmUnits,
+  };
+}
 
-  const unicodeUnits = message.length;
-  return unicodeUnits <= 70 ? 1 : Math.ceil(unicodeUnits / 67);
+/**
+ * Estimates the SMS credits shown before sending. Final billing always uses
+ * the provider-reported segment count.
+ */
+export function estimateSmsCredits(message: string): number {
+  return estimateSmsSegments(message).segments;
 }

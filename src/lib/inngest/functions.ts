@@ -10,15 +10,8 @@ import {
   type MessagingMaintenanceResult,
 } from "@/lib/runtime/messaging-maintenance.server";
 
-export const MESSAGING_MAINTENANCE_CRON = "*/3 * * * *";
+export const MESSAGING_MAINTENANCE_CRON = "* * * * *";
 export const BILLING_MAINTENANCE_CRON = "0 * * * *";
-
-interface MessagingMaintenanceStep {
-  run(
-    id: string,
-    action: () => Promise<MessagingMaintenanceResult>,
-  ): Promise<MessagingMaintenanceResult>;
-}
 
 interface BillingMaintenanceStep {
   run(
@@ -28,10 +21,9 @@ interface BillingMaintenanceStep {
 }
 
 export async function handleScheduledMessaging(
-  step: MessagingMaintenanceStep,
   run = runMessagingMaintenance,
 ): Promise<MessagingMaintenanceResult> {
-  return step.run("run-messaging-maintenance", run);
+  return run();
 }
 
 export async function handleScheduledBilling(
@@ -52,7 +44,7 @@ export const scheduledMessagingMaintenance = inngest.createFunction(
     concurrency: 1,
     retries: 2,
   },
-  async ({ step }) => handleScheduledMessaging(step),
+  async () => handleScheduledMessaging(),
 );
 
 export const scheduledBillingMaintenance = inngest.createFunction(

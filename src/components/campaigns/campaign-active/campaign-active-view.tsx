@@ -8,6 +8,7 @@ import {
   Pause,
   Play,
   Rocket,
+  RotateCcw,
   Settings,
   Trash2,
   Workflow,
@@ -18,6 +19,7 @@ import { useRouter } from "next/navigation";
 import {
   deleteCampaignAction,
   pauseCampaignAction,
+  retryFailedCampaignMessagesAction,
   resumeCampaignAction,
   saveCampaignDraftAction,
 } from "@/app/(app)/campaigns/actions";
@@ -38,8 +40,10 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ViewTab>("overview");
   const [isDeleting, setIsDeleting] = useState(false);
-  const [activeAction, setActiveAction] = useState<"delete" | "pause" | "resume" | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [activeAction, setActiveAction] = useState<"delete" | "pause" | "resume" | "retry" | null>(null);
   const [isNumberModalOpen, setIsNumberModalOpen] = useState(false);
+  const [actionNotice, setActionNotice] = useState<{ kind: "error" | "success"; message: string } | null>(null);
 
   const monitoring = initialData.activeMonitoring;
 
@@ -65,6 +69,22 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
     try {
       await deleteCampaignAction(initialData.id);
       router.push("/campaigns");
+    } finally {
+      setActiveAction(null);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    if (!initialData.id || activeAction) return;
+    setActiveAction("retry");
+    setActionNotice(null);
+    try {
+      const result = await retryFailedCampaignMessagesAction(initialData.id);
+      setActionNotice({ kind: result.ok ? "success" : "error", message: result.message });
+      if (result.ok) {
+        setIsRetrying(false);
+        router.refresh();
+      }
     } finally {
       setActiveAction(null);
     }
@@ -125,7 +145,21 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
         </div>
 
         {/* Top-Right Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {monitoring.failedMessages.retryableCount > 0 && (
+            <button
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#F1D39B] bg-[#FFF9ED] px-3 text-xs font-semibold text-[#8A5A08] transition-colors hover:bg-[#FFF2D7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B97913]/30 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={Boolean(activeAction)}
+              onClick={() => setIsRetrying(true)}
+              title="Queue definite pre-accept failures using the campaign interval"
+              type="button"
+            >
+              <RotateCcw size={14} />
+              <span>
+                Retry {monitoring.failedMessages.retryableCount} failed {monitoring.failedMessages.retryableCount === 1 ? "message" : "messages"}
+              </span>
+            </button>
+          )}
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#E5E9E6] bg-white px-3 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#FBFCFB] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#07813F]/30 disabled:cursor-not-allowed disabled:bg-[#F2F4F3] disabled:text-[#949D97]"
             disabled={Boolean(activeAction)}
@@ -167,6 +201,19 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
           </button>
         </div>
       </div>
+
+      {actionNotice && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-xs font-medium ${
+            actionNotice.kind === "success"
+              ? "border-[#C2E8D2] bg-[#E9F5EE] text-[#076B37]"
+              : "border-[#F8C4C4] bg-[#FDECEC] text-[#B63232]"
+          }`}
+          role="status"
+        >
+          {actionNotice.message}
+        </div>
+      )}
 
       {/* View Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-[#E5E9E6] pb-3">
@@ -280,6 +327,45 @@ export function CampaignActiveView({ initialData }: { initialData: CampaignEdito
         phoneNumbers={initialData.phoneNumbers}
         selectedPhoneNumberId={initialData.phoneNumberId}
       />
+
+      {/* Delete Confirmation Modal */}
+      {isRetrying && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-[#E5E9E6] bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-xl bg-[#FFF2D7] text-[#8A5A08]">
+                <RotateCcw size={18} />
+              </div>
+              <h3 className="text-base font-semibold text-[#171A18]">Retry failed messages?</h3>
+            </div>
+            <p className="mt-4 text-xs leading-relaxed text-[#66706A]">
+              This queues {monitoring.failedMessages.retryableCount} {monitoring.failedMessages.retryableCount === 1 ? "message" : "messages"} that failed before Twilio accepted them. Once the campaign is active, they will be sent one at a time using its {monitoring.dripIntervalMinutes}-minute interval and sending window.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-[#66706A]">
+              Delivery failures and uncertain sends are excluded to prevent duplicate messages. {monitoring.failedMessages.protectedCount > 0 ? `${monitoring.failedMessages.protectedCount} protected ${monitoring.failedMessages.protectedCount === 1 ? "message will" : "messages will"} not be retried.` : ""}
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2.5">
+              <button
+                className="h-9 rounded-lg border border-[#E5E9E6] px-3.5 text-xs font-medium text-[#171A18] hover:bg-[#F2F4F3] disabled:opacity-60"
+                disabled={activeAction === "retry"}
+                onClick={() => setIsRetrying(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#8A5A08] px-3.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B97913]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={activeAction === "retry"}
+                onClick={handleRetryFailed}
+                type="button"
+              >
+                <RotateCcw size={14} />
+                <span>{activeAction === "retry" ? "Queuing..." : "Queue safe retries"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {isDeleting && (

@@ -10,6 +10,8 @@ import type {
   CampaignPhoneOption,
 } from "@/components/campaigns/types";
 import { calculateCampaignStatistics } from "@/lib/campaigns/statistics";
+import { estimateCampaignCostImpact } from "@/lib/campaigns/cost-impact";
+import { estimateCampaignProviderCost } from "@/lib/campaigns/provider-cost-impact";
 import type {
   CampaignLaunchAssessment,
   CampaignStatistics,
@@ -74,6 +76,7 @@ type ContactRow = {
   last_name: string;
   company: string;
   phone_e164: string;
+  country_code: string;
   deleted_at: string | null;
 };
 
@@ -117,6 +120,14 @@ function launchAssessmentFromRpc(value: unknown): CampaignLaunchAssessment | nul
   if (!source || typeof source !== "object" || Array.isArray(source)) return null;
   const row = source as Record<string, unknown>;
   const rawReasons = row.reasons;
+  const rawEligibleRecipientIds = row.eligible_recipient_ids;
+  const eligibleRecipientIds =
+    Array.isArray(rawEligibleRecipientIds) &&
+    rawEligibleRecipientIds.every(
+      (id): id is string => typeof id === "string",
+    )
+      ? rawEligibleRecipientIds
+      : null;
   const reasons = Array.isArray(rawReasons) && rawReasons.every(
     (reason): reason is CampaignLaunchAssessment["reasons"][number] =>
       reason === "large_volume" || reason === "possible_overage",
@@ -134,6 +145,7 @@ function launchAssessmentFromRpc(value: unknown): CampaignLaunchAssessment | nul
   };
   if (
     !reasons ||
+    !eligibleRecipientIds ||
     Object.values(assessment).some((entry) => entry === null) ||
     typeof row.requires_confirmation !== "boolean" ||
     row.requires_confirmation !== (reasons.length > 0)
@@ -142,9 +154,15 @@ function launchAssessmentFromRpc(value: unknown): CampaignLaunchAssessment | nul
   }
 
   return {
+    eligibleRecipientIds,
     currentEffectiveUsageCredits: assessment.currentEffectiveUsageCredits!,
     eligibleRecipientCount: assessment.eligibleRecipientCount!,
     estimatedFirstStepCredits: assessment.estimatedFirstStepCredits!,
+    estimatedMaximumSequenceCredits: assessment.estimatedFirstStepCredits!,
+    estimatedMaximumNewOverageCredits: assessment.estimatedNewOverageCredits!,
+    estimatedMaximumAdditionalChargeMicroUsd: 0,
+    maximumSegmentsPerMessage: 0,
+    usesUnicode: false,
     estimatedNewOverageCredits: assessment.estimatedNewOverageCredits!,
     includedCredits: assessment.includedCredits!,
     includedCreditsRemaining: assessment.includedCreditsRemaining!,
@@ -288,7 +306,7 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
   if (!workspace) return null;
 
   const [contactResponse, suppressionResponse, phoneResponse, activeRecipientResponse, activeCampaignsResponse, capabilities] = await Promise.all([
-    supabase.from("contacts").select("id,first_name,last_name,company,phone_e164,deleted_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
+    supabase.from("contacts").select("id,first_name,last_name,company,phone_e164,country_code,deleted_at").eq("workspace_id", workspace.id).order("created_at", { ascending: false }),
     supabase.from("suppressions").select("phone_e164").eq("workspace_id", workspace.id),
     supabase.from("phone_numbers").select("id,phone_e164,status,country_code").eq("workspace_id", workspace.id).is("deleted_at", null).order("created_at"),
     supabase.from("campaign_recipients").select("contact_id,campaign_id,state").eq("state", "active"),
@@ -339,6 +357,7 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
   const contactOptions: CampaignContactOption[] = contacts.map((contact) => ({
     company: contact.company,
     contactId: contact.id,
+    countryCode: contact.country_code,
     deletedAt: contact.deleted_at,
     firstName: contact.first_name,
     hasActiveSequence: activeRecipients.some((recipient) => recipient.contact_id === contact.id && recipient.campaign_id !== campaignId),
@@ -361,7 +380,7 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
     const { data: allMessages } = campaignContactIds.length
       ? await supabase
           .from("messages")
-          .select("id,contact_id,phone_number_id,direction,body,created_at,sent_at,received_at,dispatch_state,delivery_state")
+          .select("id,contact_id,phone_number_id,direction,body,created_at,sent_at,received_at,dispatch_state,delivery_state,failure_code")
           .eq("workspace_id", workspace.id)
           .in("contact_id", campaignContactIds)
           .order("created_at", { ascending: true })
@@ -375,6 +394,7 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
       created_at: string;
       dispatch_state: string;
       delivery_state: string | null;
+      failure_code: string | null;
     }>;
 
     // Group messages by contact
@@ -392,7 +412,7 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
       const cMessages = messagesByContact.get(contactId) || [];
       const recipient = recipients.find((r) => r.contact_id === contactId);
       const isSuppressed = contact ? suppressed.has(contact.phone_e164) : false;
-      const hasReplied = Boolean(recipient?.replied_at) || cMessages.some((m) => m.direction === "inbound");
+      const hasReplied = Boolean(recipient?.replied_at);
 
       let status: "replied" | "opted_out" | "pending" | "sent" = "pending";
       if (isSuppressed) {
@@ -420,9 +440,25 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
         })),
         optedOut: isSuppressed,
         phone: contact?.phone_e164 || "",
+        replyReceivedAt: recipient?.replied_at ?? null,
+        replyVerified: hasReplied,
         status,
       };
     });
+
+    const { data: retrySummaryData } = await supabase.rpc(
+      "campaign_failed_message_retry_summary",
+      { p_campaign_id: campaign.id },
+    );
+    const retrySummary = retrySummaryData && typeof retrySummaryData === "object" && !Array.isArray(retrySummaryData)
+      ? retrySummaryData as Record<string, unknown>
+      : {};
+    const retryableCount = Number.isSafeInteger(retrySummary.retryableCount)
+      ? Math.max(0, Number(retrySummary.retryableCount))
+      : 0;
+    const protectedCount = Number.isSafeInteger(retrySummary.protectedCount)
+      ? Math.max(0, Number(retrySummary.protectedCount))
+      : 0;
 
     const stats = statisticsForCampaign(campaign.id, recipients, messages);
     const totalRecipients = recipientOptionsCount(recipients);
@@ -445,7 +481,9 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
       activityOverTime,
       details: {
         avgTimeToReply: calculateAvgTimeToReply(messageList),
-        bouncedCount: messageList.filter((m) => m.dispatch_state === "failed" || m.delivery_state === "failed").length,
+        bouncedCount: messageList.filter(
+          (m) => m.failure_code === "message_send_failed" || m.failure_code === "message_delivery_failed",
+        ).length,
         fromNumber: sendingNumber?.phoneNumber || "Not set",
         lastActivity: formatTimeAgo(lastMsgTime),
         recipientsCount: totalRecipients,
@@ -453,6 +491,7 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
         sequenceName: steps.length > 0 ? `${campaign.name} Sequence (${steps.length} steps)` : campaign.name,
       },
       dripIntervalMinutes: campaign.drip_interval_minutes,
+      failedMessages: { protectedCount, retryableCount },
       metrics: {
         completionPercent,
         estimatedCompletionDate: calculateEstimatedCompletion(remainingCount, campaign.drip_interval_minutes),
@@ -475,6 +514,14 @@ export async function loadCampaignEditor(campaignId?: string): Promise<CampaignE
 
   return {
     activeMonitoring,
+    billing: capabilities.valid
+      ? {
+          currentEffectiveCredits: capabilities.effectiveCredits,
+          includedCredits: capabilities.includedCredits,
+          overagePriceMicroUsd: capabilities.overagePriceMicroUsd,
+          safetyCapCredits: capabilities.safetyCapCredits,
+        }
+      : null,
     contacts: contactOptions,
     dripIntervalMinutes: campaign?.drip_interval_minutes ?? 2,
     id: campaign?.id ?? null,
@@ -593,9 +640,41 @@ export async function loadCampaignLaunchContext(campaignId: string) {
   const assessment = launchAssessmentFromRpc(assessmentData);
   if (!assessment) return null;
 
+  const eligibleIds = new Set(assessment.eligibleRecipientIds);
+  const eligibleRecipients = editor.contacts.filter((contact) =>
+    eligibleIds.has(contact.contactId),
+  );
+  if (
+    eligibleRecipients.length !== assessment.eligibleRecipientCount ||
+    !editor.billing
+  ) {
+    return null;
+  }
+  const impact = estimateCampaignCostImpact({
+    currentEffectiveCredits: assessment.currentEffectiveUsageCredits,
+    includedCredits: assessment.includedCredits,
+    overagePriceMicroUsd: editor.billing.overagePriceMicroUsd,
+    recipients: eligibleRecipients,
+    steps: editor.steps,
+  });
+  const providerCostImpact = estimateCampaignProviderCost({
+    recipients: eligibleRecipients,
+    steps: editor.steps,
+  });
+
   return {
-    assessment,
+    assessment: {
+      ...assessment,
+      estimatedMaximumAdditionalChargeMicroUsd:
+        impact.additionalChargeMicroUsd,
+      estimatedMaximumNewOverageCredits:
+        impact.estimatedNewOverageCredits,
+      estimatedMaximumSequenceCredits: impact.maximumSequenceCredits,
+      maximumSegmentsPerMessage: impact.maximumSegmentsPerMessage,
+      usesUnicode: impact.usesUnicode,
+    },
     campaign: editor,
+    providerCostImpact,
     workspaceId: workspace.id,
   };
 }

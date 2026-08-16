@@ -1133,6 +1133,10 @@ export type Database = {
         Returns: Json
       }
       assess_campaign_launch: { Args: { p_campaign_id: string }; Returns: Json }
+      campaign_failed_message_retry_summary: {
+        Args: { p_campaign_id: string }
+        Returns: Json
+      }
       billing_apply_lifecycle_event: {
         Args: {
           p_allow_terminal_reactivation: boolean
@@ -1351,6 +1355,10 @@ export type Database = {
           input_index: number
           is_suppressed: boolean
         }[]
+      }
+      retry_failed_campaign_messages: {
+        Args: { p_campaign_id: string; p_now?: string }
+        Returns: Json
       }
       claim_campaign_test_send: {
         Args: {

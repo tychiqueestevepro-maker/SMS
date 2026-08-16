@@ -16,7 +16,13 @@ import { CampaignScheduleCard } from "@/components/campaigns/campaign-builder/ca
 import { CampaignSequence } from "@/components/campaigns/campaign-builder/campaign-sequence";
 import { CampaignSummaryCard } from "@/components/campaigns/campaign-builder/campaign-summary-card";
 import { CampaignTestSendDialog } from "@/components/campaigns/campaign-test-send-dialog";
-import type { CampaignEditorDto, CampaignStepDto } from "@/components/campaigns/types";
+import type {
+  CampaignActionResult,
+  CampaignEditorDto,
+  CampaignStepDto,
+} from "@/components/campaigns/types";
+import { estimateCampaignCostImpact } from "@/lib/campaigns/cost-impact";
+import { formatMicroUsd } from "@/lib/billing/integer";
 
 export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDto }) {
   const router = useRouter();
@@ -47,6 +53,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
   const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [launchConfirmation, setLaunchConfirmation] = useState<{
+    assessment: NonNullable<CampaignActionResult["assessment"]>;
     campaignId: string;
     confirmationKey: string;
     recipientCount: number;
@@ -72,6 +79,30 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
       selected: selectedList.length,
     };
   }, [initialData.contacts, selectedContactIds]);
+
+  const eligibleRecipients = useMemo(() => {
+    const selectedSet = new Set(selectedContactIds);
+    return initialData.contacts.filter(
+      (contact) =>
+        selectedSet.has(contact.contactId) &&
+        !contact.isSuppressed &&
+        !contact.hasActiveSequence,
+    );
+  }, [initialData.contacts, selectedContactIds]);
+
+  const costImpact = useMemo(
+    () =>
+      estimateCampaignCostImpact({
+        currentEffectiveCredits:
+          initialData.billing?.currentEffectiveCredits ?? 0,
+        includedCredits: initialData.billing?.includedCredits ?? 0,
+        overagePriceMicroUsd:
+          initialData.billing?.overagePriceMicroUsd ?? 0,
+        recipients: eligibleRecipients,
+        steps,
+      }),
+    [eligibleRecipients, initialData.billing, steps],
+  );
 
   const handleSaveDraft = async () => {
     setSubmittingAction("save");
@@ -145,13 +176,14 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
         setStatusMessage({ text: "Campaign launched.", type: "success" });
         window.location.reload();
       } else if (
-        launchRes.code === "CONFIRM_LARGE_CAMPAIGN" &&
+        launchRes.code === "CONFIRM_CAMPAIGN_IMPACT" &&
         launchRes.confirmationKey &&
         launchRes.assessment
       ) {
         setLaunchConfirmation({
           campaignId: campaignIdToLaunch,
           confirmationKey: launchRes.confirmationKey,
+          assessment: launchRes.assessment,
           recipientCount: launchRes.assessment.eligibleRecipientCount,
         });
       } else {
@@ -249,7 +281,11 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
             selectedContactIds={selectedContactIds}
           />
 
-          <CampaignSequence onStepsChange={setSteps} steps={steps} />
+          <CampaignSequence
+            onStepsChange={setSteps}
+            stepImpacts={costImpact.steps}
+            steps={steps}
+          />
 
           {/* Danger Zone */}
           {initialData.id && (
@@ -280,6 +316,8 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
             eligibleCount={stats.eligible}
             invalidCount={stats.invalid}
             messagesCount={steps.length}
+            billingAvailable={initialData.billing !== null}
+            costImpact={costImpact}
             onLaunch={handleLaunch}
             onSaveDraft={handleSaveDraft}
             phoneNumber={selectedPhone}
@@ -296,18 +334,56 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
       {launchConfirmation ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm">
           <section
-            aria-label="Launch campaign?"
+            aria-label="Review campaign impact"
             aria-modal="true"
             className="w-full max-w-lg rounded-2xl border border-[#E5E9E6] bg-white p-6 shadow-2xl"
             role="dialog"
           >
-            <h2 className="text-xl font-semibold text-[#171A18]">Launch campaign?</h2>
-            <p className="mt-3 text-sm text-[#66706A]">
-              You&apos;re about to enroll {launchConfirmation.recipientCount.toLocaleString("en-US")} contacts.
+            <h2 className="text-xl font-semibold text-[#171A18] text-balance">
+              Review campaign impact
+            </h2>
+            <p className="mt-3 text-sm text-[#66706A] text-pretty">
+              Confirm the estimated usage before enrolling {launchConfirmation.recipientCount.toLocaleString("en-US")} contacts.
             </p>
-            <p className="mt-3 text-sm text-[#66706A]">
-              This campaign may use SMS credits beyond your included allowance and generate additional usage charges.
+            <div className="mt-4 rounded-xl border border-[#E5E9E6] bg-[#FBFCFB] p-4">
+              <dl className="flex flex-col gap-3 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-[#66706A]">First send</dt>
+                  <dd className="font-semibold text-[#171A18]">
+                    {launchConfirmation.assessment.estimatedFirstStepCredits.toLocaleString("en-US")} credits
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-[#66706A]">Maximum full sequence</dt>
+                  <dd className="font-semibold text-[#171A18]">
+                    {launchConfirmation.assessment.estimatedMaximumSequenceCredits.toLocaleString("en-US")} credits
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-[#66706A]">Largest message</dt>
+                  <dd className="font-semibold text-[#171A18]">
+                    {launchConfirmation.assessment.maximumSegmentsPerMessage} {launchConfirmation.assessment.maximumSegmentsPerMessage === 1 ? "segment" : "segments"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-[#66706A]">Additional Riink charge</dt>
+                  <dd className="font-semibold text-[#171A18]">
+                    {formatMicroUsd(
+                      launchConfirmation.assessment
+                        .estimatedMaximumAdditionalChargeMicroUsd,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <p className="mt-3 text-xs text-[#66706A] text-pretty">
+              The maximum assumes nobody replies. Replies and opt outs stop the remaining sequence and can reduce actual usage.
             </p>
+            {costImpact.maximumSegmentsPerMessage > 1 ? (
+              <p className="mt-3 rounded-lg border border-[#F2D3A2] bg-[#FFF8ED] px-3 py-2 text-xs font-medium text-[#8A5A10]" role="alert">
+                At least one message uses multiple SMS segments. Each segment consumes one credit per recipient.
+              </p>
+            ) : null}
             <div className="mt-6 flex justify-end gap-2">
               <button
                 className="rounded-lg border border-[#E5E9E6] bg-white px-3 py-2 text-sm font-semibold text-[#171A18] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#F2F4F3] active:scale-[0.98]"
@@ -326,7 +402,7 @@ export function CampaignBuilder({ initialData }: { initialData: CampaignEditorDt
                 )}
                 type="button"
               >
-                {submittingAction === "launch" ? "Launching..." : "Launch campaign"}
+                {submittingAction === "launch" ? "Launching..." : "Confirm and launch"}
               </button>
             </div>
           </section>

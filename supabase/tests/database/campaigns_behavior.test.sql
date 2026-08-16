@@ -4,7 +4,7 @@ create extension if not exists pgtap;
 
 set local search_path = public, extensions;
 
-select plan(72);
+select plan(74);
 
 insert into auth.users (
   id,
@@ -201,6 +201,7 @@ select lives_ok(
       ]::uuid[],
       p_send_window_start => time '00:00:00',
       p_send_window_end => time '23:59:59.999999',
+      p_drip_interval_minutes => 4,
       p_sending_days => array[1, 2, 3, 4, 5]::integer[]
     )
   $$,
@@ -336,8 +337,13 @@ select is(
 );
 select is(
   (select count(*) from public.dispatch_claim_and_reserve_next('worker-two', now() + interval '2 minutes')),
+  0::bigint,
+  'the campaign-specific drip interval blocks an early second dispatch'
+);
+select is(
+  (select count(*) from public.dispatch_claim_and_reserve_next('worker-two', now() + interval '4 minutes')),
   1::bigint,
-  'a second worker claims the other recipient without overlap'
+  'the next recipient becomes claimable at the configured drip interval'
 );
 select is(
   (select count(*) from public.dispatch_claim_and_reserve_next('worker-three', now())),
@@ -432,9 +438,14 @@ select is(
   'a released pending message can be reserved again once resumed'
 );
 select is(
-  (select count(*) from public.dispatch_claim_and_reserve_next('worker-five', now())),
+  (select count(*) from public.dispatch_claim_and_reserve_next('worker-five-early', now() + interval '2 minutes')),
+  0::bigint,
+  'resumed work still respects the campaign-specific drip interval'
+);
+select is(
+  (select count(*) from public.dispatch_claim_and_reserve_next('worker-five', now() + interval '4 minutes')),
   1::bigint,
-  'resumed work remains independently claimable'
+  'resumed work becomes claimable when its configured interval elapses'
 );
 
 select ok(

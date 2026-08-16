@@ -7,6 +7,7 @@ import { loadCampaignLaunchContext } from "@/app/(app)/campaigns/data";
 import type {
   CampaignActionResult,
   CampaignDraftPayload,
+  CampaignRetryActionResult,
   CampaignTestSendActionResult,
 } from "@/components/campaigns/types";
 import { campaignLaunchConfirmationKey } from "@/lib/campaigns/launch";
@@ -58,7 +59,7 @@ function confirmationRequired(
 ): CampaignActionResult {
   return {
     assessment,
-    code: "CONFIRM_LARGE_CAMPAIGN",
+    code: "CONFIRM_CAMPAIGN_IMPACT",
     confirmationKey: campaignLaunchConfirmationKey(assessment),
     message: "Review this campaign before launching.",
     ok: false,
@@ -147,9 +148,9 @@ export async function launchCampaignAction(
   }
 
   const currentConfirmationKey = campaignLaunchConfirmationKey(assessment);
-  const confirmedLargeLaunch =
-    assessment.requiresConfirmation && parsedConfirmation.data === currentConfirmationKey;
-  if (assessment.requiresConfirmation && !confirmedLargeLaunch) {
+  const impactReviewed = parsedConfirmation.data === currentConfirmationKey;
+  const confirmedLargeLaunch = assessment.requiresConfirmation && impactReviewed;
+  if (!impactReviewed) {
     return confirmationRequired(assessment);
   }
 
@@ -162,6 +163,22 @@ export async function launchCampaignAction(
           current_effective_usage_credits: assessment.currentEffectiveUsageCredits,
           eligible_recipient_count: assessment.eligibleRecipientCount,
           estimated_first_step_credits: assessment.estimatedFirstStepCredits,
+          estimated_maximum_sequence_credits:
+            assessment.estimatedMaximumSequenceCredits,
+          estimated_maximum_new_overage_credits:
+            assessment.estimatedMaximumNewOverageCredits,
+          estimated_maximum_additional_charge_micro_usd:
+            assessment.estimatedMaximumAdditionalChargeMicroUsd,
+          estimated_provider_cost_minimum_micro_usd:
+            context.providerCostImpact.minimumMicroUsd,
+          estimated_provider_cost_maximum_micro_usd:
+            context.providerCostImpact.maximumMicroUsd,
+          provider_cost_by_destination:
+            context.providerCostImpact.byDestination,
+          provider_pricing_complete:
+            context.providerCostImpact.pricingComplete,
+          maximum_segments_per_message: assessment.maximumSegmentsPerMessage,
+          uses_unicode: assessment.usesUnicode,
           estimated_new_overage_credits: assessment.estimatedNewOverageCredits,
           included_credits: assessment.includedCredits,
           included_credits_remaining: assessment.includedCreditsRemaining,
@@ -175,9 +192,12 @@ export async function launchCampaignAction(
     p_consent_confirmed: true,
   });
   if (error) {
-    if (confirmedLargeLaunch) {
+    if (impactReviewed) {
       const refreshed = await loadCampaignLaunchContext(parsedId.data);
-      if (refreshed?.assessment.requiresConfirmation) {
+      if (
+        refreshed &&
+        campaignLaunchConfirmationKey(refreshed.assessment) !== currentConfirmationKey
+      ) {
         return confirmationRequired(refreshed.assessment);
       }
     }
@@ -233,6 +253,56 @@ export async function resumeCampaignAction(campaignId: string) {
     "active",
     true,
   );
+}
+
+export async function retryFailedCampaignMessagesAction(
+  campaignId: string,
+): Promise<CampaignRetryActionResult> {
+  const parsedId = z.string().uuid().safeParse(campaignId);
+  if (!parsedId.success) return { message: "This campaign couldn't be found.", ok: false };
+
+  const { supabase, workspaceId } = await currentWorkspaceId();
+  if (!workspaceId) return { message: "Your workspace isn't ready yet.", ok: false };
+
+  const capabilities = await loadCustomerBillingCapabilities(supabase);
+  if (!capabilities.canSendMessages) {
+    return {
+      message: capabilities.safetyCapReached
+        ? "Retry is unavailable because your SMS credit safety limit has been reached."
+        : "Retry is unavailable. Check Billing in Settings.",
+      ok: false,
+    };
+  }
+
+  const { data, error } = await supabase.rpc("retry_failed_campaign_messages", {
+    p_campaign_id: parsedId.data,
+    p_now: new Date().toISOString(),
+  });
+  if (error) {
+    return { message: "We couldn't queue these messages. Please try again.", ok: false };
+  }
+
+  const result = data && typeof data === "object" && !Array.isArray(data)
+    ? data as Record<string, unknown>
+    : {};
+  const queuedCount = Number.isSafeInteger(result.queuedCount) && Number(result.queuedCount) >= 0
+    ? Number(result.queuedCount)
+    : 0;
+  const protectedCount = Number.isSafeInteger(result.protectedCount) && Number(result.protectedCount) >= 0
+    ? Number(result.protectedCount)
+    : 0;
+
+  revalidatePath("/campaigns");
+  revalidatePath(`/campaigns/${parsedId.data}`);
+
+  return {
+    message: queuedCount > 0
+      ? `${queuedCount} failed ${queuedCount === 1 ? "message" : "messages"} queued. Sending will follow the campaign interval.`
+      : "No message can be retried safely. Uncertain or provider-accepted sends stay protected.",
+    ok: queuedCount > 0,
+    protectedCount,
+    queuedCount,
+  };
 }
 
 export async function deleteCampaignAction(campaignId: string) {

@@ -4,10 +4,25 @@ create extension if not exists pgtap;
 
 set local search_path = public, extensions;
 
-select plan(44);
+select plan(46);
 
 select has_column('public', 'messages', 'received_at', 'messages expose inbound occurrence time');
 select has_column('public', 'messages', 'in_reply_to_message_id', 'inbound replies use a separate association');
+select ok(
+  pg_catalog.pg_get_functiondef(
+    'private.apply_verified_inbound_sms_webhook(jsonb,jsonb)'::regprocedure
+  ) like '%[+]33[1-79][0-9]{8}%',
+  'verified inbound campaign replies accept supported French E.164 numbers'
+);
+select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_trigger as trigger_row
+    where trigger_row.tgname = 'contacts_fill_country_code_from_phone'
+      and not trigger_row.tgisinternal
+  ),
+  'unknown verified inbound contacts receive a routing country before insertion'
+);
 select ok(
   exists (
     select 1 from pg_catalog.pg_constraint as constraint_row

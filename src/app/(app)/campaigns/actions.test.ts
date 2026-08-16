@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
+  loadCampaignLaunchContext: vi.fn(),
   loadCustomerBillingCapabilities: vi.fn(),
   revalidatePath: vi.fn(),
   rpc: vi.fn(),
@@ -13,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/app/(app)/campaigns/data", () => ({
-  loadCampaignLaunchContext: vi.fn(),
+  loadCampaignLaunchContext: mocks.loadCampaignLaunchContext,
 }));
 vi.mock("@/lib/billing/customer-capabilities.server", () => ({
   loadCustomerBillingCapabilities: mocks.loadCustomerBillingCapabilities,
@@ -23,12 +24,38 @@ vi.mock("@/lib/runtime/messaging.server", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 
-import { saveCampaignDraftAction, sendCampaignTestMessageAction } from "./actions";
+import {
+  launchCampaignAction,
+  retryFailedCampaignMessagesAction,
+  saveCampaignDraftAction,
+  sendCampaignTestMessageAction,
+} from "./actions";
+import { campaignLaunchConfirmationKey } from "@/lib/campaigns/launch";
+import type { CampaignLaunchAssessment } from "@/lib/campaigns/types";
 
 const CAMPAIGN_ID = "11111111-1111-4111-8111-111111111111";
 const CONTACT_ID = "22222222-2222-4222-8222-222222222222";
 const PHONE_NUMBER_ID = "33333333-3333-4333-8333-333333333333";
 const WORKSPACE_ID = "44444444-4444-4444-8444-444444444444";
+
+const launchAssessment: CampaignLaunchAssessment = {
+  currentEffectiveUsageCredits: 320,
+  eligibleRecipientCount: 2,
+  eligibleRecipientIds: [CONTACT_ID, "99999999-9999-4999-8999-999999999999"],
+  estimatedFirstStepCredits: 4,
+  estimatedMaximumAdditionalChargeMicroUsd: 0,
+  estimatedMaximumNewOverageCredits: 0,
+  estimatedMaximumSequenceCredits: 8,
+  estimatedNewOverageCredits: 0,
+  includedCredits: 2_000,
+  includedCreditsRemaining: 1_680,
+  maximumSegmentsPerMessage: 2,
+  projectedUsageCredits: 324,
+  reasons: [],
+  requiresConfirmation: false,
+  unsupportedCountryCount: 0,
+  usesUnicode: true,
+};
 
 function client() {
   return {
@@ -108,6 +135,67 @@ describe("saveCampaignDraftAction", () => {
   });
 });
 
+describe("launchCampaignAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.createClient.mockResolvedValue(client());
+    mocks.loadCampaignLaunchContext.mockResolvedValue({
+      assessment: launchAssessment,
+      campaign: {
+        messagingAvailable: true,
+        phoneNumberId: PHONE_NUMBER_ID,
+        phoneNumbers: [{ id: PHONE_NUMBER_ID, status: "ready" }],
+        safetyCapReached: false,
+      },
+      providerCostImpact: {
+        byDestination: [{
+          basePriceMicroUsdPerSegment: 79_800,
+          carrierFeeMaximumMicroUsdPerSegment: 0,
+          carrierFeeMinimumMicroUsdPerSegment: 0,
+          countryCode: "FR",
+          countryName: "France",
+          estimatedProviderCostMaximumMicroUsd: 638_400,
+          estimatedProviderCostMinimumMicroUsd: 638_400,
+          pricingAvailable: true,
+          recipientCount: 2,
+          totalSegments: 8,
+        }],
+        maximumMicroUsd: 638_400,
+        minimumMicroUsd: 638_400,
+        pricingComplete: true,
+      },
+      workspaceId: WORKSPACE_ID,
+    });
+    mocks.rpc.mockResolvedValue({ data: null, error: null });
+  });
+
+  it("requires an exact impact review for every campaign", async () => {
+    await expect(
+      launchCampaignAction(CAMPAIGN_ID, null, true),
+    ).resolves.toMatchObject({
+      assessment: launchAssessment,
+      code: "CONFIRM_CAMPAIGN_IMPACT",
+      ok: false,
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("launches after the reviewed estimate is confirmed", async () => {
+    const confirmationKey = campaignLaunchConfirmationKey(launchAssessment);
+
+    await expect(
+      launchCampaignAction(CAMPAIGN_ID, confirmationKey, true),
+    ).resolves.toMatchObject({ ok: true, status: "active" });
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "launch_campaign",
+      expect.objectContaining({
+        p_confirmed_contact_count: 2,
+        p_consent_confirmed: true,
+      }),
+    );
+  });
+});
+
 describe("sendCampaignTestMessageAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -177,5 +265,45 @@ describe("sendCampaignTestMessageAction", () => {
     })).resolves.toMatchObject({ ok: false });
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("retryFailedCampaignMessagesAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.createClient.mockResolvedValue(client());
+    mocks.loadCustomerBillingCapabilities.mockResolvedValue({
+      canSendMessages: true,
+      safetyCapReached: false,
+    });
+  });
+
+  it("queues only the failures selected by the database safety fence", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: { protectedCount: 2, queuedCount: 3 },
+      error: null,
+    });
+
+    await expect(retryFailedCampaignMessagesAction(CAMPAIGN_ID)).resolves.toMatchObject({
+      ok: true,
+      protectedCount: 2,
+      queuedCount: 3,
+    });
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "retry_failed_campaign_messages",
+      expect.objectContaining({ p_campaign_id: CAMPAIGN_ID }),
+    );
+  });
+
+  it("does not queue retries when customer messaging is disabled", async () => {
+    mocks.loadCustomerBillingCapabilities.mockResolvedValue({
+      canSendMessages: false,
+      safetyCapReached: true,
+    });
+
+    await expect(retryFailedCampaignMessagesAction(CAMPAIGN_ID)).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });

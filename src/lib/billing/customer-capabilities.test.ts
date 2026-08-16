@@ -9,8 +9,10 @@ import {
 function summary(overrides: Record<string, unknown> = {}) {
   return {
     effective_credits: 2_450,
+    included_credits: 2_000,
     max_phone_numbers: 3,
     messaging_enabled: true,
+    additional_credit_price_micro_usd: 40_000,
     safety_cap_credits: 10_000,
     safety_cap_reached: false,
     subscription_status: "active",

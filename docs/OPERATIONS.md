@@ -38,13 +38,16 @@ The Stripe endpoint accepts the event families used by the billing runtime:
 - `customer.subscription.created`, `customer.subscription.updated`, and
   `customer.subscription.deleted`.
 
-Inngest schedules messaging maintenance every three minutes and billing
+Inngest polls messaging maintenance every minute and schedules billing
 maintenance hourly through `GET|POST|PUT /api/inngest`. Install the official
 Inngest integration on the Vercel project so it configures
 `INNGEST_SIGNING_KEY`, `INNGEST_EVENT_KEY`, and synchronizes the functions after
-each deployment. The three-minute cadence plus one durable step per function
-keeps expected Hobby usage around 30,240 executions per 30-day month, leaving
-retry headroom below the current 50,000-execution allowance.
+each deployment. The database permits at most one dispatch attempt per campaign
+during that campaign's configured `drip_interval_minutes`; the worker's limit of
+50 is only a global bound across different campaigns. Messaging runs directly,
+while hourly billing keeps its durable step. This keeps expected Hobby usage
+around 44,640 executions per 30-day month, leaving retry headroom below the
+current 50,000-execution allowance.
 
 The legacy `/api/cron/messaging` and `/api/cron/billing` routes remain as
 operator-only fallbacks and require `CRON_SECRET`, but they are no longer
@@ -52,6 +55,23 @@ declared as Vercel Cron Jobs. A failed job must be retried through Inngest or th
 same protected route; never bypass the database claim or reconciliation RPCs
 with an ad-hoc provider call. `dispatch_unknown` must never be resent
 automatically.
+
+Campaign operators may use **Retry failed messages** from the campaign page.
+That action requeues only a definite `message_send_failed` recorded before any
+provider acceptance, billing allocation, or provider message identifier. It
+preserves the former failure in the private retry audit and returns the message
+to the regular campaign scheduler, so the campaign's configured interval,
+sending days, and sending window still apply. Delivery failures,
+`dispatch_unknown`, suppressed contacts, and contacts that replied are never
+included in this bulk retry.
+
+A campaign reply is product-confirmed only after the SMS webhook signature has
+been verified, its provider message ID has passed idempotency checks, and the
+database has linked the inbound message to an accepted, non-failed outbound
+message from that campaign. Only that transaction sets `replied_at` and stops
+the recipient's sequence. This confirms the reply arrived through the assigned
+phone number; it does not prove the legal identity of the person holding the
+recipient's phone.
 
 ## Resend email and support forwarding
 
@@ -89,8 +109,16 @@ repeat the external call.
 
 - Customer usage is real outbound SMS segments; the UI names them SMS credits.
 - Inbound usage never consumes included credits and is never customer billable.
-- Provider cost is internal accounting data and never determines V1 customer
-  pricing.
+- Reconciled and estimated provider cost remains internal accounting data and
+  never determines V1 customer pricing. Never serialize Twilio estimates,
+  destination prices, carrier fee ranges, or provider cost breakdowns to the
+  customer campaign UI. Customers only see credits, projected plan usage, and
+  their additional Riink charge.
+- Destination estimates are versioned in
+  `src/lib/messaging/destination-pricing.ts`. As of 2026-08-14 the supported
+  outbound rates per segment are France $0.0798, United States $0.0118 to
+  $0.0133 including the carrier fee range, and Canada $0.0147 to $0.0170
+  including the carrier fee range. Recheck Twilio before changing that table.
 - A message keeps its original `billing_period_id`, `usage_position`, and plan
   snapshots forever. Late segment reconciliation may create an unpaid delta for
   a later invoice, but it must never use a later period's included credits.

@@ -14,6 +14,8 @@ import { logServerEvent } from "@/lib/observability/logger";
 import { messagingRuntimeFromEnvironment } from "@/lib/runtime/messaging.server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
+// This is a global safety bound across all campaigns. The reservation RPC
+// independently enforces each campaign's configured drip interval.
 const MAX_DISPATCH_PER_RUN = 50;
 const MAX_RECONCILIATIONS_PER_RUN = 50;
 const MAX_INBOUND_RECONCILIATIONS_PER_RUN = 50;

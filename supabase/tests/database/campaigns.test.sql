@@ -4,7 +4,7 @@ create extension if not exists pgtap;
 
 set local search_path = public, extensions;
 
-select plan(52);
+select plan(58);
 
 select has_table('public', 'billing_periods', 'billing periods exist');
 select has_table('public', 'billing_period_usage', 'billing period usage exists');
@@ -17,6 +17,31 @@ select has_table('public', 'messages', 'product-safe messages exist');
 select has_table('public', 'consent_confirmations', 'launch consent audit exists');
 select has_table('private', 'phone_number_provider_details', 'number provider data is private');
 select has_table('private', 'message_provider_details', 'message provider data is private');
+select has_table('private', 'campaign_message_retry_history', 'campaign retry attempts keep a private audit history');
+select ok(
+  not pg_catalog.has_table_privilege('authenticated', 'private.campaign_message_retry_history', 'SELECT'),
+  'customers cannot read private retry/provider history'
+);
+select ok(
+  pg_catalog.has_function_privilege('authenticated', 'public.campaign_failed_message_retry_summary(uuid)', 'EXECUTE'),
+  'workspace users can inspect the product-safe retry summary'
+);
+select ok(
+  pg_catalog.has_function_privilege('authenticated', 'public.retry_failed_campaign_messages(uuid,timestamptz)', 'EXECUTE'),
+  'workspace users can request a safety-fenced retry'
+);
+select ok(
+  pg_catalog.pg_get_functiondef(
+    'public.retry_failed_campaign_messages(uuid,timestamptz)'::regprocedure
+  ) ilike '%dispatch_state = ''failed''%accepted_at is null%billing_period_id is null%failure_code = ''message_send_failed''%provider_message_id%',
+  'retry eligibility requires a definite pre-accept failure without billing or provider acceptance'
+);
+select ok(
+  pg_catalog.pg_get_functiondef(
+    'public.retry_failed_campaign_messages(uuid,timestamptz)'::regprocedure
+  ) ilike '%campaign_message_retry_history%dispatch_state = ''pending''%next_send_at = p_now%',
+  'safe retries are audited then returned to the normal paced scheduler'
+);
 
 select ok(
   exists (

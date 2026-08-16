@@ -1,4 +1,4 @@
-import { estimateSmsCredits } from "../messaging/credits";
+import { estimateSmsCredits, estimateSmsSegments } from "../messaging/credits";
 import { renderCampaignTemplate } from "./templates";
 import type {
   CampaignLaunchAssessment,
@@ -86,8 +86,22 @@ export function assessCampaignLaunch(
   }
 
   return {
+    eligibleRecipientIds: input.eligibleRecipients.map(
+      (recipient) => recipient.contactId,
+    ),
     eligibleRecipientCount: input.eligibleRecipients.length,
     estimatedFirstStepCredits: estimate.totalSmsCredits,
+    estimatedMaximumSequenceCredits: estimate.totalSmsCredits,
+    estimatedMaximumNewOverageCredits: estimatedNewOverageCredits,
+    estimatedMaximumAdditionalChargeMicroUsd: 0,
+    maximumSegmentsPerMessage: Math.max(
+      0,
+      ...estimate.recipients.map((recipient) => recipient.smsCredits),
+    ),
+    usesUnicode: estimate.recipients.some(
+      (recipient) =>
+        estimateSmsSegments(recipient.renderedMessage).encoding === "unicode",
+    ),
     currentEffectiveUsageCredits: input.currentEffectiveUsageCredits,
     includedCredits: input.includedCredits,
     includedCreditsRemaining: Math.max(
@@ -114,14 +128,19 @@ export function campaignLaunchConfirmationKey(
     assessment.includedCreditsRemaining,
     assessment.estimatedNewOverageCredits,
     assessment.projectedUsageCredits,
+    assessment.estimatedMaximumSequenceCredits,
+    assessment.estimatedMaximumNewOverageCredits,
+    assessment.estimatedMaximumAdditionalChargeMicroUsd,
+    assessment.maximumSegmentsPerMessage,
   ];
   values.forEach((value, index) =>
     assertNonNegativeInteger(value, `Launch assessment value ${index + 1}`),
   );
 
   return [
-    "v1",
+    "v2",
     ...values.map(String),
+    assessment.usesUnicode ? "unicode" : "gsm-7",
     [...assessment.reasons].sort().join(","),
   ].join(":");
 }

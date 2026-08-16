@@ -9,6 +9,7 @@ describe("evaluateRecipientEligibility", () => {
       {
         ...base,
         contactId: "eligible",
+        countryCode: "FR",
         deletedAt: null,
         isSuppressed: false,
         hasActiveSequence: false,
@@ -16,6 +17,7 @@ describe("evaluateRecipientEligibility", () => {
       {
         ...base,
         contactId: "deleted",
+        countryCode: "FR",
         deletedAt: "2026-08-01T00:00:00.000Z",
         isSuppressed: false,
         hasActiveSequence: false,
@@ -23,6 +25,7 @@ describe("evaluateRecipientEligibility", () => {
       {
         ...base,
         contactId: "opted-out",
+        countryCode: "FR",
         deletedAt: null,
         isSuppressed: true,
         hasActiveSequence: false,
@@ -30,6 +33,7 @@ describe("evaluateRecipientEligibility", () => {
       {
         ...base,
         contactId: "in-sequence",
+        countryCode: "FR",
         deletedAt: null,
         isSuppressed: false,
         hasActiveSequence: true,
@@ -37,6 +41,7 @@ describe("evaluateRecipientEligibility", () => {
       {
         ...base,
         contactId: "eligible",
+        countryCode: "FR",
         deletedAt: null,
         isSuppressed: false,
         hasActiveSequence: false,

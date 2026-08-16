@@ -8,8 +8,12 @@ import {
   formatPhoneNumberDisplay,
 } from "@/components/campaigns/phone-number-identity";
 import type { CampaignPhoneOption } from "@/components/campaigns/types";
+import { formatMicroUsd } from "@/lib/billing/integer";
+import type { CampaignCostImpact } from "@/lib/campaigns/cost-impact";
 
 type CampaignSummaryCardProps = {
+  billingAvailable: boolean;
+  costImpact: CampaignCostImpact;
   phoneNumber: CampaignPhoneOption | null;
   selectedCount: number;
   eligibleCount: number;
@@ -27,6 +31,8 @@ type CampaignSummaryCardProps = {
 };
 
 export function CampaignSummaryCard({
+  billingAvailable,
+  costImpact,
   phoneNumber,
   selectedCount,
   eligibleCount,
@@ -44,6 +50,9 @@ export function CampaignSummaryCard({
 }: CampaignSummaryCardProps) {
   const [consentConfirmed, setConsentConfirmed] = useState(false);
   const isSubmitting = submittingAction !== null;
+  const needsCostAttention =
+    costImpact.maximumSegmentsPerMessage > 1 ||
+    costImpact.estimatedNewOverageCredits > 0;
 
   const canLaunch =
     Boolean(phoneNumber && phoneNumber.status === "ready") &&
@@ -83,6 +92,69 @@ export function CampaignSummaryCard({
           </div>
         </div>
       </div>
+
+      <section
+        aria-label="Estimated campaign impact"
+        aria-live="polite"
+        className={`rounded-xl border p-3 ${
+          needsCostAttention
+            ? "border-[#F2D3A2] bg-[#FFF8ED]"
+            : "border-[#C2E8D2] bg-[#F4FBF7]"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-[#171A18]">
+            Estimated impact
+          </h3>
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+              needsCostAttention
+                ? "bg-[#F8E4C3] text-[#8A5A10]"
+                : "bg-[#DDF2E6] text-[#07813F]"
+            }`}
+          >
+            {needsCostAttention ? "Review" : "Within plan"}
+          </span>
+        </div>
+        <dl className="mt-3 flex flex-col gap-2 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-[#66706A]">First send</dt>
+            <dd className="font-semibold text-[#171A18]">
+              {costImpact.firstStepCredits.toLocaleString("en-US")} credits
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-[#66706A]">Maximum sequence</dt>
+            <dd className="font-semibold text-[#171A18]">
+              {costImpact.maximumSequenceCredits.toLocaleString("en-US")} credits
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-[#66706A]">Projected plan usage</dt>
+            <dd className="font-semibold text-[#171A18]">
+              {billingAvailable
+                ? `${costImpact.projectedUsageCredits.toLocaleString("en-US")} / ${costImpact.includedCredits.toLocaleString("en-US")}`
+                : "Unavailable"}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-[#66706A]">Additional Riink charge</dt>
+            <dd className="font-semibold text-[#171A18]">
+              {billingAvailable
+                ? formatMicroUsd(costImpact.additionalChargeMicroUsd)
+                : "Unavailable"}
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-[#66706A] text-pretty">
+          Maximum usage assumes every contact receives every message. Replies and opt outs reduce actual usage.
+        </p>
+        {costImpact.maximumSegmentsPerMessage > 1 ? (
+          <p className="mt-2 text-xs font-medium text-[#8A5A10] text-pretty">
+            The largest message uses {costImpact.maximumSegmentsPerMessage} segments per recipient.
+          </p>
+        ) : null}
+      </section>
 
       {/* Compact Info Cards */}
       <div className="flex flex-col gap-2.5 pt-1">

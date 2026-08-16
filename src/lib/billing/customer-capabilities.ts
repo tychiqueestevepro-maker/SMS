@@ -2,8 +2,10 @@ export type CustomerBillingCapabilities = Readonly<{
   canAcquireNumber: boolean;
   canSendMessages: boolean;
   effectiveCredits: number;
+  includedCredits: number;
   maxPhoneNumbers: number;
   messagingEnabled: boolean;
+  overagePriceMicroUsd: number;
   safetyCapCredits: number;
   safetyCapReached: boolean;
   subscriptionStatus: string;
@@ -15,8 +17,10 @@ export const unavailableCustomerBillingCapabilities: CustomerBillingCapabilities
     canAcquireNumber: false,
     canSendMessages: false,
     effectiveCredits: 0,
+    includedCredits: 0,
     maxPhoneNumbers: 0,
     messagingEnabled: false,
+    overagePriceMicroUsd: 0,
     safetyCapCredits: 0,
     safetyCapReached: false,
     subscriptionStatus: "unavailable",
@@ -53,12 +57,18 @@ export function customerBillingCapabilitiesFromSummary(
   }
   const row = candidate as Record<string, unknown>;
   const effectiveCredits = nonNegativeInteger(row.effective_credits);
+  const includedCredits = nonNegativeInteger(row.included_credits);
   const maxPhoneNumbers = nonNegativeInteger(row.max_phone_numbers);
   const safetyCapCredits = nonNegativeInteger(row.safety_cap_credits);
+  const overagePriceMicroUsd = nonNegativeInteger(
+    row.additional_credit_price_micro_usd,
+  );
   if (
     effectiveCredits === null ||
+    includedCredits === null ||
     maxPhoneNumbers === null ||
     safetyCapCredits === null ||
+    overagePriceMicroUsd === null ||
     typeof row.messaging_enabled !== "boolean" ||
     typeof row.safety_cap_reached !== "boolean" ||
     typeof row.subscription_status !== "string" ||
@@ -74,8 +84,10 @@ export function customerBillingCapabilitiesFromSummary(
     canAcquireNumber: NUMBER_ACQUISITION_STATUSES.has(subscriptionStatus),
     canSendMessages: messagingEnabled && !safetyCapReached,
     effectiveCredits,
+    includedCredits,
     maxPhoneNumbers,
     messagingEnabled,
+    overagePriceMicroUsd,
     safetyCapCredits,
     safetyCapReached,
     subscriptionStatus,

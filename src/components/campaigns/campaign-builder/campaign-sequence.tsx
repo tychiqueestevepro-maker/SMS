@@ -4,13 +4,15 @@ import React from "react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 
 import type { CampaignStepDto } from "@/components/campaigns/types";
+import type { CampaignStepCostImpact } from "@/lib/campaigns/cost-impact";
 
 type CampaignSequenceProps = {
   steps: CampaignStepDto[];
+  stepImpacts: readonly CampaignStepCostImpact[];
   onStepsChange: (steps: CampaignStepDto[]) => void;
 };
 
-export function CampaignSequence({ steps, onStepsChange }: CampaignSequenceProps) {
+export function CampaignSequence({ steps, stepImpacts, onStepsChange }: CampaignSequenceProps) {
   const addStep = () => {
     if (steps.length >= 3) return;
     const newStep: CampaignStepDto = {
@@ -78,6 +80,12 @@ export function CampaignSequence({ steps, onStepsChange }: CampaignSequenceProps
 
         {steps.map((step, idx) => {
           const isFirst = idx === 0;
+          const impact = stepImpacts[idx];
+          const segmentLabel = impact
+            ? impact.minimumSegmentsPerRecipient === impact.maximumSegmentsPerRecipient
+              ? `${impact.maximumSegmentsPerRecipient} ${impact.maximumSegmentsPerRecipient === 1 ? "segment" : "segments"} per recipient`
+              : `${impact.minimumSegmentsPerRecipient} to ${impact.maximumSegmentsPerRecipient} segments per recipient`
+            : "Impact unavailable";
 
           return (
             <div
@@ -147,7 +155,7 @@ export function CampaignSequence({ steps, onStepsChange }: CampaignSequenceProps
               </div>
 
               {/* Variable Insertion Pills */}
-              <div className="mt-2.5 flex items-center justify-between">
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#66706A]">
                   <span className="font-medium text-[#949D97]">Insert variable:</span>
                   {["first_name", "last_name", "company"].map((varName) => (
@@ -162,10 +170,23 @@ export function CampaignSequence({ steps, onStepsChange }: CampaignSequenceProps
                   ))}
                 </div>
 
-                <span className="text-[11px] text-[#949D97]">
-                  {step.body.length} / 160 chars (1 SMS segment)
-                </span>
+                <div className="shrink-0 text-right text-xs">
+                  <p className={`font-semibold ${impact && impact.maximumSegmentsPerRecipient > 1 ? "text-[#B97913]" : "text-[#66706A]"}`}>
+                    {segmentLabel}
+                  </p>
+                  <p className="mt-1 text-[#949D97]">
+                    {impact?.encoding === "unicode" ? "Unicode encoding" : "GSM 7 encoding"}
+                    {impact && impact.totalCredits > 0
+                      ? ` · ${impact.totalCredits.toLocaleString("en-US")} credits total`
+                      : ""}
+                  </p>
+                </div>
               </div>
+              {impact && impact.maximumSegmentsPerRecipient > 1 ? (
+                <p className="mt-3 rounded-lg border border-[#F2D3A2] bg-[#FFF8ED] px-3 py-2 text-xs text-[#8A5A10] text-pretty">
+                  This message is split into multiple SMS segments. Shorten it or remove Unicode characters to reduce usage.
+                </p>
+              ) : null}
             </div>
           );
         })}

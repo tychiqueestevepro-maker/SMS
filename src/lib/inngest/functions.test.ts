@@ -21,8 +21,8 @@ function stepRunner<T>() {
 }
 
 describe("Inngest maintenance functions", () => {
-  it("uses a three-minute messaging cadence and an hourly billing cadence", () => {
-    expect(MESSAGING_MAINTENANCE_CRON).toBe("*/3 * * * *");
+  it("polls messaging every minute and billing every hour", () => {
+    expect(MESSAGING_MAINTENANCE_CRON).toBe("* * * * *");
     expect(BILLING_MAINTENANCE_CRON).toBe("0 * * * *");
     expect(scheduledMessagingMaintenance.opts).toMatchObject({
       concurrency: 1,
@@ -34,37 +34,27 @@ describe("Inngest maintenance functions", () => {
     });
   });
 
-  it("runs messaging as one durable step and returns its bounded result", async () => {
-    const step = stepRunner<{
-      dispatched: number;
-      inboundReconciled: number;
-      reconciled: number;
-    }>();
+  it("runs messaging directly and returns its bounded result", async () => {
     const run = vi.fn(async () => ({
       dispatched: 3,
       inboundReconciled: 2,
       reconciled: 1,
     }));
 
-    await expect(handleScheduledMessaging(step, run)).resolves.toEqual({
+    await expect(handleScheduledMessaging(run)).resolves.toEqual({
       dispatched: 3,
       inboundReconciled: 2,
       reconciled: 1,
     });
-    expect(step.run).toHaveBeenCalledWith("run-messaging-maintenance", run);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("lets messaging failures escape so Inngest retries the step", async () => {
-    const step = stepRunner<{
-      dispatched: number;
-      inboundReconciled: number;
-      reconciled: number;
-    }>();
+  it("lets messaging failures escape so Inngest retries the function", async () => {
     const run = vi.fn(async () => {
       throw new Error("temporary failure");
     });
 
-    await expect(handleScheduledMessaging(step, run)).rejects.toThrow(
+    await expect(handleScheduledMessaging(run)).rejects.toThrow(
       "temporary failure",
     );
   });

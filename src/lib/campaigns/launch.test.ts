@@ -10,6 +10,7 @@ import type { CampaignRecipientCandidate } from "./types";
 function recipients(count: number): CampaignRecipientCandidate[] {
   return Array.from({ length: count }, (_, index) => ({
     contactId: `contact-${index}`,
+    countryCode: "FR",
     firstName: "Ada",
     lastName: "Lovelace",
     company: "Analytical Engines",

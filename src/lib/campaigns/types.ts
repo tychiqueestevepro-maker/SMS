@@ -58,6 +58,7 @@ export interface CampaignRecipientSchedule {
 
 export interface CampaignRecipientCandidate extends CampaignTemplateValues {
   contactId: string;
+  countryCode: string;
   deletedAt: string | null;
   isSuppressed: boolean;
   hasActiveSequence: boolean;
@@ -107,8 +108,14 @@ export interface FirstStepCreditEstimate {
 }
 
 export interface CampaignLaunchAssessment {
+  eligibleRecipientIds: readonly string[];
   eligibleRecipientCount: number;
   estimatedFirstStepCredits: number;
+  estimatedMaximumSequenceCredits: number;
+  estimatedMaximumNewOverageCredits: number;
+  estimatedMaximumAdditionalChargeMicroUsd: number;
+  maximumSegmentsPerMessage: number;
+  usesUnicode: boolean;
   currentEffectiveUsageCredits: number;
   includedCredits: number;
   includedCreditsRemaining: number;
@@ -117,6 +124,26 @@ export interface CampaignLaunchAssessment {
   requiresConfirmation: boolean;
   reasons: Array<"large_volume" | "possible_overage">;
   unsupportedCountryCount: number;
+}
+
+export interface CampaignDestinationCostImpact {
+  basePriceMicroUsdPerSegment: number | null;
+  carrierFeeMaximumMicroUsdPerSegment: number | null;
+  carrierFeeMinimumMicroUsdPerSegment: number | null;
+  countryCode: string;
+  countryName: string;
+  estimatedProviderCostMaximumMicroUsd: number;
+  estimatedProviderCostMinimumMicroUsd: number;
+  pricingAvailable: boolean;
+  recipientCount: number;
+  totalSegments: number;
+}
+
+export interface CampaignProviderCostImpact {
+  byDestination: readonly CampaignDestinationCostImpact[];
+  maximumMicroUsd: number;
+  minimumMicroUsd: number;
+  pricingComplete: boolean;
 }
 
 export interface CampaignStatisticsRecipient {

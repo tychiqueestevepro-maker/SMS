@@ -63,7 +63,16 @@ export type CampaignResponseConversationDto = {
   lastMessageBody: string;
   lastMessageTime: string;
   optedOut: boolean;
+  replyReceivedAt: string | null;
+  replyVerified: boolean;
   messages: CampaignResponseMessageDto[];
+};
+
+export type CampaignRetryActionResult = {
+  ok: boolean;
+  message: string;
+  protectedCount?: number;
+  queuedCount?: number;
 };
 
 export type CampaignActiveMonitoringDto = {
@@ -94,6 +103,10 @@ export type CampaignActiveMonitoringDto = {
     bouncedCount: number;
     lastActivity: string;
   };
+  failedMessages: {
+    protectedCount: number;
+    retryableCount: number;
+  };
   responses: CampaignResponseConversationDto[];
 };
 
@@ -115,6 +128,12 @@ export type CampaignEditorDto = {
   sendingDays: number[];
   dripIntervalMinutes: number;
   activeMonitoring?: CampaignActiveMonitoringDto | null;
+  billing: {
+    currentEffectiveCredits: number;
+    includedCredits: number;
+    overagePriceMicroUsd: number;
+    safetyCapCredits: number;
+  } | null;
 };
 
 export type CampaignDraftPayload = {
@@ -136,7 +155,7 @@ export type CampaignActionResult = {
   campaignId?: string;
   status?: CampaignClientStatus;
   code?:
-    | "CONFIRM_LARGE_CAMPAIGN"
+    | "CONFIRM_CAMPAIGN_IMPACT"
     | "MESSAGING_UNAVAILABLE"
     | "NO_READY_NUMBER"
     | "NO_ELIGIBLE_RECIPIENTS"
